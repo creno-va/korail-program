@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -25,13 +24,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from korail_program.app.icons import ICON_ERROR, ICON_MUTED, ICON_SUCCESS, ICON_WARNING
+from korail_program.app.icons import icon_label, material_icon
 from korail_program.app.theme import APP_STYLESHEET, STATUS_COLORS
 from korail_program.core.timecode import format_timecode
 
@@ -95,6 +95,7 @@ class QueueCard(QWidget):
         layout.setSpacing(6)
 
         top = QHBoxLayout()
+        top.addWidget(icon_label("video-outline", color=ICON_MUTED, size=18))
         name = QLabel(self.queue_file.display_name)
         name.setStyleSheet("font-weight: 700;")
         name.setWordWrap(True)
@@ -183,6 +184,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(10)
 
         header = QHBoxLayout()
+        header.addWidget(icon_label("video-outline", color=ICON_MUTED))
         title = QLabel("영상")
         title.setObjectName("SectionTitle")
         header.addWidget(title)
@@ -191,7 +193,8 @@ class MainWindow(QMainWindow):
         header.addWidget(self.queue_count_chip)
 
         self.add_files_button = QPushButton("추가")
-        self.add_files_button.setIcon(_icon(QStyle.StandardPixmap.SP_DialogOpenButton))
+        self.add_files_button.setIcon(material_icon("folder-plus-outline"))
+        self.add_files_button.setIconSize(QSize(18, 18))
         self.add_files_button.clicked.connect(self._choose_files)
         header.addWidget(self.add_files_button)
 
@@ -205,6 +208,8 @@ class MainWindow(QMainWindow):
 
         self.clear_button = QPushButton("대기열 비우기")
         self.clear_button.setObjectName("DangerButton")
+        self.clear_button.setIcon(material_icon("delete-outline", color=ICON_ERROR))
+        self.clear_button.setIconSize(QSize(18, 18))
         self.clear_button.clicked.connect(self.clear_queue)
 
         layout.addLayout(header)
@@ -221,6 +226,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         action_row = QHBoxLayout()
+        action_row.addWidget(icon_label("clipboard-text-clock-outline", color=ICON_MUTED))
         title = QLabel("작업 흐름")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
@@ -231,10 +237,12 @@ class MainWindow(QMainWindow):
         action_row.addStretch(1)
 
         self.start_button = QPushButton("분석 시작")
-        self.start_button.setIcon(_icon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.start_button.setIcon(material_icon("play-circle-outline"))
+        self.start_button.setIconSize(QSize(18, 18))
         self.start_button.clicked.connect(self.start_analysis)
         self.export_button = QPushButton("리포트 내보내기")
-        self.export_button.setIcon(_icon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        self.export_button.setIcon(material_icon("file-export-outline"))
+        self.export_button.setIconSize(QSize(18, 18))
         self.export_button.clicked.connect(self.export_report)
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.export_button)
@@ -245,6 +253,7 @@ class MainWindow(QMainWindow):
         timeline_layout.setContentsMargins(12, 12, 12, 12)
         timeline_layout.setSpacing(8)
         timeline_header = QHBoxLayout()
+        timeline_header.addWidget(icon_label("timeline-clock-outline", color=ICON_MUTED))
         timeline_title = QLabel("타임라인")
         timeline_title.setObjectName("SectionTitle")
         self.session_chip = StatusChip("대기 중", "neutral")
@@ -258,6 +267,7 @@ class MainWindow(QMainWindow):
         timeline_layout.addWidget(self.timeline_list, stretch=1)
 
         result_header = QHBoxLayout()
+        result_header.addWidget(icon_label("alert-outline", color=ICON_MUTED))
         result_title = QLabel("탐지 이벤트")
         result_title.setObjectName("SectionTitle")
         self.event_count_chip = StatusChip("0건", "neutral")
@@ -299,6 +309,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         header = QHBoxLayout()
+        header.addWidget(icon_label("file-search-outline", color=ICON_MUTED))
         title = QLabel("상세")
         title.setObjectName("SectionTitle")
         self.detail_status_chip = StatusChip("선택 없음", "neutral")
@@ -486,6 +497,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(12, 9, 12, 9)
         layout.setSpacing(4)
         top = QHBoxLayout()
+        top.addWidget(icon_label(tone_icon(tone), color=tone_icon_color(tone), size=18))
         title_label = QLabel(title)
         title_label.setStyleSheet("font-weight: 700;")
         top.addWidget(title_label)
@@ -563,14 +575,6 @@ class MainWindow(QMainWindow):
     def _log(self, message: str) -> None:
         self.log.appendPlainText(message)
 
-
-def _icon(icon: QStyle.StandardPixmap) -> QIcon:
-    app = QApplication.instance()
-    if app is None:
-        return QIcon()
-    return app.style().standardIcon(icon)
-
-
 def tone_label(tone: str) -> str:
     return {
         "success": "정상",
@@ -578,3 +582,21 @@ def tone_label(tone: str) -> str:
         "error": "오류",
         "neutral": "상태",
     }.get(tone, "상태")
+
+
+def tone_icon(tone: str) -> str:
+    return {
+        "success": "check-circle-outline",
+        "warning": "alert-outline",
+        "error": "alert-circle-outline",
+        "neutral": "information-outline",
+    }.get(tone, "information-outline")
+
+
+def tone_icon_color(tone: str) -> str:
+    return {
+        "success": ICON_SUCCESS,
+        "warning": ICON_WARNING,
+        "error": ICON_ERROR,
+        "neutral": ICON_MUTED,
+    }.get(tone, ICON_MUTED)

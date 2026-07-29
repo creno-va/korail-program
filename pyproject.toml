@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pyside6>=6.7",
+    "qtawesome>=1.4.2",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +45,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/korail_program"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/korail_program/assets/fonts" = "korail_program/assets/fonts"
 
 [tool.ruff]
 line-length = 100

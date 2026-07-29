@@ -12,6 +12,14 @@
 
 - Qt for Python LGPL: https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html
 - PyQt licensing: https://riverbankcomputing.com/software/pyqt
+- KRDS Korea Design System: https://www.krds.go.kr/
+- KRDS developer guide: https://www.krds.go.kr/html/site/outline/outline_03.html
+- QtAwesome Material Design Icons support: https://pypi.org/project/QtAwesome/
+
+## Typography
+
+- Pretendard: https://github.com/orioncactus/pretendard
+- Pretendard GOV release: https://github.com/orioncactus/pretendard/releases/tag/v1.3.9
 
 ## OCR
 
