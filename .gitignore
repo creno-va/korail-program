@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build outputs
+build/
+dist/
+*.spec
+*.egg-info/
+
+# Application outputs
+tmp/
+logs/
+output/
+captures/
+reports/
+*.sqlite
+*.sqlite3
+*.db
+
+# Local model/runtime assets
+assets/models/
+assets/ffmpeg/
+models/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
