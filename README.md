@@ -6,10 +6,45 @@
 
 - Python CPython 기반
 - GUI는 PySide6(Qt Widgets)
-- 패키지/환경 관리는 uv 우선
+- 패키지/환경 관리는 uv 우선 검토, 현재 로컬 설치는 `.venv` + pip editable install
 - YOLO 학습 없이 Gemma 4 12B Unified 로컬 멀티모달 LLM으로 프레임 VQA judge 수행
 - 역명/위치 판독은 PaddleOCR + 역명 사전 보정으로 분리
 - 분석 결과는 SQLite, 캡처 이미지, PDF/Excel 리포트로 저장
+
+## 실행
+
+현재 레포에는 `.venv`가 구성되어 있고 앱이 editable install 되어 있습니다.
+
+GUI 실행:
+
+```powershell
+.\scripts\run_gui.cmd
+```
+
+직접 실행:
+
+```powershell
+.\.venv\Scripts\korail-analyzer-gui.exe
+```
+
+테스트:
+
+```powershell
+.\scripts\test.cmd
+```
+
+PowerShell 스크립트를 선호하는 경우 실행 정책에 따라 다음처럼 실행할 수 있습니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_gui.ps1
+```
+
+처음부터 다시 설치해야 하는 경우:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+```
 
 ## 문서
 
