@@ -5,17 +5,28 @@ description = "Offline Windows analyzer for catenary obstruction tree events in 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "openpyxl>=3.1",
-    "opencv-python>=4.10",
     "pyside6>=6.7",
-    "reportlab>=4.2",
 ]
 
 [project.optional-dependencies]
+processing = [
+    "opencv-python>=4.10",
+]
+reports = [
+    "openpyxl>=3.1",
+    "reportlab>=4.2",
+]
 ocr = [
     "paddleocr>=3.0",
 ]
 inference = [
+    "requests>=2.32",
+]
+full = [
+    "opencv-python>=4.10",
+    "openpyxl>=3.1",
+    "reportlab>=4.2",
+    "paddleocr>=3.0",
     "requests>=2.32",
 ]
 dev = [
@@ -40,4 +51,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-
