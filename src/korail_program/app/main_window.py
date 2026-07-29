@@ -64,13 +64,13 @@ class StatusChip(QLabel):
         self.set_tone(tone)
 
     def set_tone(self, tone: str) -> None:
-        bg, fg, border = STATUS_COLORS.get(tone, STATUS_COLORS["neutral"])
+        bg, fg, _ = STATUS_COLORS.get(tone, STATUS_COLORS["neutral"])
         self.setStyleSheet(
             f"""
             QLabel {{
                 background: {bg};
                 color: {fg};
-                border: 1px solid {border};
+                border: none;
                 border-radius: 12px;
                 padding: 2px 10px;
                 font-size: 11px;
@@ -163,9 +163,7 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(12, 12, 12, 12)
-        root_layout.setSpacing(10)
-
-        root_layout.addWidget(self._build_app_bar())
+        root_layout.setSpacing(0)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -176,31 +174,6 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(splitter, stretch=1)
         self.setCentralWidget(root)
-
-    def _build_app_bar(self) -> QWidget:
-        frame = QFrame()
-        frame.setObjectName("AppBar")
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(12)
-
-        title_box = QVBoxLayout()
-        title = QLabel("전차선로 지장수목 분석")
-        title.setObjectName("Title")
-        subtitle = QLabel("오프라인 영상 대기열 · OCR 구간 판독 · Gemma 프레임 Judge")
-        subtitle.setObjectName("Muted")
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-
-        self.queue_count_chip = StatusChip("대기열 0", "neutral")
-        self.model_chip = StatusChip("모델 미연결", "warning")
-        self.ocr_chip = StatusChip("OCR 준비 필요", "warning")
-
-        layout.addLayout(title_box, stretch=1)
-        layout.addWidget(self.queue_count_chip)
-        layout.addWidget(self.model_chip)
-        layout.addWidget(self.ocr_chip)
-        return frame
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -214,6 +187,8 @@ class MainWindow(QMainWindow):
         title.setObjectName("SectionTitle")
         header.addWidget(title)
         header.addStretch(1)
+        self.queue_count_chip = StatusChip("0개", "neutral")
+        header.addWidget(self.queue_count_chip)
 
         self.add_files_button = QPushButton("추가")
         self.add_files_button.setIcon(_icon(QStyle.StandardPixmap.SP_DialogOpenButton))
@@ -249,6 +224,10 @@ class MainWindow(QMainWindow):
         title = QLabel("작업 흐름")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
+        self.model_chip = StatusChip("Gemma 필요", "warning")
+        self.ocr_chip = StatusChip("OCR 필요", "warning")
+        action_row.addWidget(self.model_chip)
+        action_row.addWidget(self.ocr_chip)
         action_row.addStretch(1)
 
         self.start_button = QPushButton("분석 시작")
@@ -578,7 +557,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_header(self) -> None:
         count = len(self._queued_files)
-        self.queue_count_chip.setText(f"대기열 {count}")
+        self.queue_count_chip.setText(f"{count}개")
         self.queue_count_chip.set_tone("success" if count else "neutral")
 
     def _log(self, message: str) -> None:

@@ -10,33 +10,38 @@ APP_STYLESHEET = """
 }
 
 QMainWindow, QWidget {
-    background: #f5f5f5;
+    background: #eeeeee;
 }
 
-QFrame#AppBar,
 QFrame#Panel,
-QFrame#Timeline,
-QFrame#Inspector,
-QFrame#MetricCard {
+QFrame#Inspector {
     background: #ffffff;
-    border: 1px solid #dedede;
-    border-radius: 8px;
+    border: none;
+    border-radius: 10px;
 }
 
 QFrame#LeftRail {
-    background: #ececec;
+    background: #e6e6e6;
     border: none;
 }
 
+QFrame#Timeline,
+QFrame#MetricCard,
+QLabel#Panel {
+    background: #f3f3f3;
+    border: none;
+    border-radius: 10px;
+}
+
 QFrame#QueueCard {
-    background: #ffffff;
-    border: 1px solid #dcdcdc;
+    background: #f7f7f7;
+    border: none;
     border-radius: 8px;
 }
 
 QFrame#Bubble {
-    background: #f7f7f7;
-    border: 1px solid #e0e0e0;
+    background: #f3f3f3;
+    border: none;
     border-radius: 8px;
 }
 
@@ -60,8 +65,8 @@ QLabel#Tiny {
 }
 
 QPushButton {
-    background: #ffffff;
-    border: 1px solid #d2d2d2;
+    background: #e9e9e9;
+    border: none;
     border-radius: 6px;
     padding: 8px 12px;
 }
@@ -75,18 +80,18 @@ QPushButton:pressed {
 }
 
 QPushButton:disabled {
-    background: #eeeeee;
+    background: #dedede;
     color: #9a9a9a;
 }
 
 QPushButton#DangerButton {
+    background: #f8d7da;
     color: #842029;
-    border-color: #e4b8bf;
 }
 
 QListWidget, QTableWidget, QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
-    background: #ffffff;
-    border: 1px solid #d9d9d9;
+    background: #f3f3f3;
+    border: none;
     border-radius: 6px;
     selection-background-color: #e8e8e8;
     selection-color: #222222;
@@ -97,9 +102,8 @@ QListWidget::item {
 }
 
 QHeaderView::section {
-    background: #f0f0f0;
+    background: #e9e9e9;
     border: none;
-    border-bottom: 1px solid #d8d8d8;
     padding: 8px;
     font-weight: 700;
 }
@@ -109,8 +113,8 @@ QTableWidget {
 }
 
 QProgressBar {
-    background: #eeeeee;
-    border: 1px solid #d7d7d7;
+    background: #e3e3e3;
+    border: none;
     border-radius: 6px;
     text-align: center;
     height: 18px;
@@ -126,8 +130,8 @@ QTabWidget::pane {
 }
 
 QTabBar::tab {
-    background: #f5f5f5;
-    border: 1px solid #dedede;
+    background: #e9e9e9;
+    border: none;
     padding: 8px 14px;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
@@ -135,14 +139,13 @@ QTabBar::tab {
 
 QTabBar::tab:selected {
     background: #ffffff;
-    border-bottom-color: #ffffff;
 }
 """
 
 
 STATUS_COLORS = {
-    "neutral": ("#f2f2f2", "#555555", "#d9d9d9"),
-    "success": ("#e9f7ef", "#0f5132", "#badbcc"),
-    "warning": ("#fff4de", "#8a5a00", "#ffd98a"),
-    "error": ("#f8d7da", "#842029", "#f1aeb5"),
+    "neutral": ("#e5e5e5", "#555555", "#e5e5e5"),
+    "success": ("#dff3e8", "#0f5132", "#dff3e8"),
+    "warning": ("#fff0cc", "#7a4f00", "#fff0cc"),
+    "error": ("#f8d7da", "#842029", "#f8d7da"),
 }

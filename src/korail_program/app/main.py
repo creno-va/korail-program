@@ -7,6 +7,7 @@ import sys
 
 def main() -> int:
     try:
+        from PySide6.QtGui import QFont
         from PySide6.QtWidgets import QApplication
 
         from korail_program.app.main_window import MainWindow
@@ -15,6 +16,7 @@ def main() -> int:
         raise SystemExit(2) from exc
 
     app = QApplication(sys.argv)
+    app.setFont(QFont("Malgun Gothic", 9))
     window = MainWindow()
     window.show()
     return app.exec()
