@@ -22,6 +22,8 @@ build/
 dist/
 *.spec
 *.egg-info/
+*.app/
+*.dmg
 
 # Application outputs
 tmp/

@@ -30,7 +30,7 @@ QFrame#LeftRail {
 }
 
 QFrame#MetricCard,
-QLabel#Panel {
+QLabel#CaptureBox {
     background: #f7f7f8;
     border: none;
     border-radius: 8px;
@@ -53,6 +53,12 @@ QFrame#StatusRow {
     background: #ffffff;
     border: none;
     border-radius: 8px;
+}
+
+QSplitter#WorkspaceSplitter::handle {
+    background: #e6e7eb;
+    margin: 8px 10px;
+    width: 1px;
 }
 
 QLabel#Title {

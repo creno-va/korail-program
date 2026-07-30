@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -31,178 +30,19 @@ from PySide6.QtWidgets import (
 )
 
 from korail_program.app.icons import ICON_ERROR, material_icon
-from korail_program.app.theme import APP_STYLESHEET, STATUS_COLORS
+from korail_program.app.theme import APP_STYLESHEET
+from korail_program.app.widgets import (
+    AnalysisStatusCard,
+    DropQueueList,
+    EmptyState,
+    QueueCard,
+    QueueFile,
+    StatusChip,
+    horizontal_divider,
+)
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
-
-
-@dataclass(frozen=True, slots=True)
-class QueueFile:
-    path: Path
-    size_bytes: int
-    status: str = "대기"
-
-    @property
-    def display_name(self) -> str:
-        return self.path.name
-
-    @property
-    def size_label(self) -> str:
-        size_mb = self.size_bytes / (1024 * 1024)
-        if size_mb >= 1024:
-            return f"{size_mb / 1024:.1f} GB"
-        return f"{size_mb:.1f} MB"
-
-
-class StatusChip(QLabel):
-    def __init__(self, text: str, tone: str = "neutral") -> None:
-        super().__init__(text)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFixedHeight(24)
-        self.set_tone(tone)
-
-    def set_tone(self, tone: str) -> None:
-        bg, fg, _ = STATUS_COLORS.get(tone, STATUS_COLORS["neutral"])
-        self.setStyleSheet(
-            f"""
-            QLabel {{
-                background: {bg};
-                color: {fg};
-                border: none;
-                border-radius: 12px;
-                padding: 2px 10px;
-                font-size: 11px;
-                font-weight: 700;
-            }}
-            """
-        )
-
-
-class QueueCard(QWidget):
-    def __init__(self, queue_file: QueueFile) -> None:
-        super().__init__()
-        self.queue_file = queue_file
-        self.status_chip = StatusChip(queue_file.status, "neutral")
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        frame = QFrame()
-        frame.setObjectName("QueueCard")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
-
-        top = QHBoxLayout()
-        name = QLabel(self.queue_file.display_name)
-        name.setStyleSheet("font-weight: 700;")
-        name.setWordWrap(True)
-        top.addWidget(name, stretch=1)
-        top.addWidget(self.status_chip)
-
-        meta = QLabel(f"{self.queue_file.size_label}  ·  {self.queue_file.path.suffix.lower()}")
-        meta.setObjectName("Tiny")
-        meta.setWordWrap(True)
-
-        layout.addLayout(top)
-        layout.addWidget(meta)
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(frame)
-
-    def set_status(self, status: str, tone: str) -> None:
-        self.status_chip.setText(status)
-        self.status_chip.set_tone(tone)
-
-
-class AnalysisStatusCard(QWidget):
-    def __init__(self, queue_file: QueueFile) -> None:
-        super().__init__()
-        self.queue_file = queue_file
-        self.status_chip = StatusChip("대기", "neutral")
-        self.stage_label = QLabel("분석 대기")
-        self.stage_label.setObjectName("Muted")
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        frame = QFrame()
-        frame.setObjectName("StatusRow")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
-
-        top = QHBoxLayout()
-        title = QLabel(self.queue_file.display_name)
-        title.setStyleSheet("font-weight: 700;")
-        title.setWordWrap(True)
-        top.addWidget(title, stretch=1)
-        top.addWidget(self.status_chip)
-
-        meta = QHBoxLayout()
-        meta.addWidget(self.stage_label, stretch=1)
-        size_label = QLabel(self.queue_file.size_label)
-        size_label.setObjectName("Tiny")
-        meta.addWidget(size_label)
-
-        layout.addLayout(top)
-        layout.addLayout(meta)
-        layout.addWidget(self.progress)
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(frame)
-
-    def set_state(self, status: str, tone: str, stage: str, progress: int) -> None:
-        self.status_chip.setText(status)
-        self.status_chip.set_tone(tone)
-        self.stage_label.setText(stage)
-        self.progress.setValue(max(0, min(100, progress)))
-
-
-class EmptyState(QWidget):
-    def __init__(self, text: str) -> None:
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 24, 12, 24)
-        label = QLabel(text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setObjectName("Muted")
-        label.setWordWrap(True)
-        layout.addWidget(label)
-
-
-class DropQueueList(QListWidget):
-    files_dropped = Signal(list)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setAcceptDrops(True)
-        self.setSpacing(8)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.setFrameShape(QFrame.Shape.NoFrame)
-
-    def dragEnterEvent(self, event) -> None:  # noqa: N802
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            return
-        super().dragEnterEvent(event)
-
-    def dragMoveEvent(self, event) -> None:  # noqa: N802
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            return
-        super().dragMoveEvent(event)
-
-    def dropEvent(self, event) -> None:  # noqa: N802
-        paths = [Path(url.toLocalFile()) for url in event.mimeData().urls() if url.isLocalFile()]
-        if paths:
-            self.files_dropped.emit(paths)
-            event.acceptProposedAction()
-            return
-        super().dropEvent(event)
+DETAIL_FIELDS = ("영상", "구간", "타임코드", "위험도", "OCR", "검수")
 
 
 class MainWindow(QMainWindow):
@@ -225,6 +65,7 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setObjectName("WorkspaceSplitter")
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(self._build_left_panel())
         splitter.addWidget(self._build_work_panel())
@@ -273,9 +114,9 @@ class MainWindow(QMainWindow):
         bottom_actions.addWidget(self.more_button)
 
         layout.addLayout(header)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addWidget(self.queue_list, stretch=1)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addLayout(bottom_actions)
         return panel
 
@@ -296,8 +137,8 @@ class MainWindow(QMainWindow):
         title = QLabel("분석 작업")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
-        self.model_chip = StatusChip("Gemma 필요", "warning")
-        self.ocr_chip = StatusChip("OCR 필요", "warning")
+        self.model_chip = StatusChip("Gemma 미연결", "warning")
+        self.ocr_chip = StatusChip("OCR 미연결", "warning")
         action_row.addWidget(self.model_chip)
         action_row.addWidget(self.ocr_chip)
         action_row.addStretch(1)
@@ -314,12 +155,13 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.export_button)
 
         status_header = QHBoxLayout()
-        status_title = QLabel("분석 상태")
+        status_title = QLabel("영상별 로그")
         status_title.setObjectName("SectionTitle")
-        self.session_chip = StatusChip("대기 중", "neutral")
+        self.session_chip = StatusChip("대기", "neutral")
         status_header.addWidget(status_title)
         status_header.addStretch(1)
         status_header.addWidget(self.session_chip)
+
         self.analysis_list = QListWidget()
         self.analysis_list.setObjectName("AnalysisList")
         self.analysis_list.setFrameShape(QFrame.Shape.NoFrame)
@@ -351,13 +193,13 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
 
         layout.addLayout(action_row)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addLayout(status_header)
         layout.addWidget(self.analysis_list, stretch=2)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addLayout(result_header)
         layout.addWidget(self.results_table, stretch=3)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addWidget(self.progress)
 
         self._show_empty_analysis_state()
@@ -381,7 +223,7 @@ class MainWindow(QMainWindow):
         self.capture_placeholder = QLabel("캡처 프레임")
         self.capture_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.capture_placeholder.setMinimumHeight(210)
-        self.capture_placeholder.setObjectName("Panel")
+        self.capture_placeholder.setObjectName("CaptureBox")
 
         fields = QFrame()
         fields.setObjectName("MetricCard")
@@ -390,7 +232,7 @@ class MainWindow(QMainWindow):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(10)
         self.detail_labels: dict[str, QLabel] = {}
-        for row, key in enumerate(["영상", "구간", "타임코드", "위험도", "OCR", "검수"]):
+        for row, key in enumerate(DETAIL_FIELDS):
             label = QLabel(key)
             label.setObjectName("Muted")
             value = QLabel("-")
@@ -413,20 +255,22 @@ class MainWindow(QMainWindow):
         self.log.setMaximumHeight(150)
 
         layout.addLayout(header)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addWidget(self.capture_placeholder)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addWidget(fields)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addWidget(evidence_label)
         layout.addWidget(self.evidence_text, stretch=1)
-        layout.addWidget(_divider())
+        layout.addWidget(horizontal_divider())
         layout.addWidget(log_label)
         layout.addWidget(self.log)
         return panel
 
     def _apply_theme(self) -> None:
-        QApplication.instance().setStyleSheet(APP_STYLESHEET)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(APP_STYLESHEET)
 
     def _choose_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(
@@ -502,7 +346,7 @@ class MainWindow(QMainWindow):
             analysis_card.set_state(
                 "점검",
                 "warning",
-                "파일 확인 완료 · 모델/OCR 파이프라인 연결 대기",
+                "파일 확인 완료 / 모델, OCR 파이프라인 연결 대기",
                 20,
             )
             progress = int(index / total * 35)
@@ -511,7 +355,7 @@ class MainWindow(QMainWindow):
             analysis_card.set_state(
                 "연결 대기",
                 "warning",
-                "Gemma/PaddleOCR 실행 워커 연결 필요",
+                "Gemma, PaddleOCR 실행 어댑터 연결 필요",
                 progress,
             )
 
@@ -523,7 +367,7 @@ class MainWindow(QMainWindow):
         self.ocr_chip.set_tone("warning")
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
-        self._log("분석 워커 연결 대기: Gemma/PaddleOCR 실행 단계 필요")
+        self._log("분석 파이프라인 연결 대기: Gemma/PaddleOCR 실행 단계 필요")
 
     def export_report(self) -> None:
         if self.results_table.rowCount() == 0:
@@ -541,7 +385,7 @@ class MainWindow(QMainWindow):
     def _show_empty_analysis_state(self) -> None:
         self.analysis_list.clear()
         self._analysis_empty_item = QListWidgetItem()
-        empty = EmptyState("영상이 추가되면 파일별 분석 단계와 진행률이 여기에 표시됩니다.")
+        empty = EmptyState("영상을 추가하면 파일별 분석 로그와 진행률이 여기에 표시됩니다.")
         self._analysis_empty_item.setSizeHint(QSize(420, 96))
         self.analysis_list.addItem(self._analysis_empty_item)
         self.analysis_list.setItemWidget(self._analysis_empty_item, empty)
@@ -621,10 +465,3 @@ class MainWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.log.appendPlainText(message)
-
-
-def _divider() -> QFrame:
-    line = QFrame()
-    line.setObjectName("Divider")
-    line.setFrameShape(QFrame.Shape.NoFrame)
-    return line
