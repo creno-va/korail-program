@@ -32,8 +32,8 @@ class EventMergerTests(unittest.TestCase):
                 video_id=1,
                 start_time_ms=700000,
                 end_time_ms=790000,
-                section_start="일로역",
-                section_end="몽탄역",
+                section_start="밀양강교",
+                section_end="청도경계",
                 confidence=0.9,
             )
         ]
@@ -42,8 +42,8 @@ class EventMergerTests(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].risk_level, RiskLevel.HIGH)
-        self.assertEqual(events[0].section_start, "일로역")
-        self.assertEqual(events[0].section_end, "몽탄역")
+        self.assertEqual(events[0].section_start, "밀양강교")
+        self.assertEqual(events[0].section_end, "청도경계")
         self.assertEqual(events[0].source_observation_count, 3)
 
     def test_skip_short_uncertain_event(self) -> None:
@@ -55,7 +55,7 @@ class EventMergerTests(unittest.TestCase):
             near_catenary=True,
             risk_level=RiskLevel.MEDIUM,
             bbox_hint=None,
-            evidence="짧은 단발 이벤트",
+            evidence="지속성 애매 이벤트",
             needs_human_review=True,
         )
 

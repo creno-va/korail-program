@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
+from korail_program.analysis.batch import BatchAnalysisConfig, run_batch_analysis
 from korail_program.core.event_merger import merge_judge_observations
-from korail_program.core.models import SectionMapping, to_jsonable
+from korail_program.core.models import RiskLevel, SectionMapping, to_jsonable
 from korail_program.db.repository import initialize_database
 from korail_program.judge.schema import judge_observation_from_payload
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="korail-analyzer")
@@ -27,6 +30,32 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--sample-interval-ms", type=int, default=1000)
     merge.add_argument("--gap-tolerance-ms", type=int, default=1500)
     merge.add_argument("--min-event-duration-ms", type=int, default=2000)
+
+    analyze = subparsers.add_parser(
+        "analyze-videos",
+        help="Sample videos, judge frames with a local VLM, and write a report.",
+    )
+    analyze.add_argument(
+        "inputs",
+        nargs="*",
+        type=Path,
+        help="Video files, directories, or simple glob paths. Defaults to the current directory.",
+    )
+    analyze.add_argument("--out", type=Path, default=Path("output") / "analysis")
+    analyze.add_argument("--interval-sec", type=float, default=10.0)
+    analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", "gemma3:4b"))
+    analyze.add_argument("--ollama-url", default=os.environ.get("OLLAMA_HOST", "http://localhost:11434"))
+    analyze.add_argument("--route-hint")
+    analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH", "ffmpeg"))
+    analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH", "ffprobe"))
+    analyze.add_argument("--max-width", type=int, default=1280)
+    analyze.add_argument(
+        "--min-report-risk",
+        choices=["low", "medium", "high", "낮음", "중간", "높음"],
+        default="중간",
+        help="Minimum risk level to copy into captures and reports.",
+    )
+    analyze.add_argument("--recursive", action="store_true")
 
     return parser
 
@@ -47,6 +76,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "merge-events":
         return _merge_events(args)
+
+    if args.command == "analyze-videos":
+        return _analyze_videos(args)
 
     parser.print_help()
     return 0
@@ -92,6 +124,35 @@ def _merge_events(args: argparse.Namespace) -> int:
         print(f"Wrote {len(events)} events: {args.out}")
     else:
         print(output_text, file=sys.stdout)
+    return 0
+
+
+def _analyze_videos(args: argparse.Namespace) -> int:
+    result = run_batch_analysis(
+        BatchAnalysisConfig(
+            inputs=args.inputs or [Path.cwd()],
+            output_dir=args.out,
+            interval_s=args.interval_sec,
+            model=args.model,
+            ollama_url=args.ollama_url,
+            route_hint=args.route_hint,
+            ffmpeg_path=args.ffmpeg,
+            ffprobe_path=args.ffprobe,
+            max_width=args.max_width,
+            min_report_risk=RiskLevel.coerce(args.min_report_risk),
+            recursive=args.recursive,
+        )
+    )
+    print(f"Videos: {result.video_count}")
+    print(f"Sampled frames: {result.sampled_frame_count}")
+    print(f"Suspicious captures: {result.suspicious_frame_count}")
+    print(f"Events: {result.event_count}")
+    if result.failure_count:
+        print(f"Failures: {result.failure_count}", file=sys.stderr)
+    print(f"Report HTML: {result.report_html}")
+    print(f"Report Markdown: {result.report_markdown}")
+    print(f"Observations JSON: {result.observations_json}")
+    print(f"Events JSON: {result.events_json}")
     return 0
 
 

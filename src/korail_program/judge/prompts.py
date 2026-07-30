@@ -14,21 +14,22 @@ def build_frame_judge_prompt(*, route_hint: str | None = None) -> str:
     return (
         f"{route_line}"
         "Task: Inspect this forward-facing train cab frame.\n"
-        "Decide whether trees, bamboo, or vegetation appear near the catenary/overhead line.\n"
-        "Use the following JSON schema exactly:\n"
+        "Decide whether trees, bamboo, grass, branches, or other vegetation appear close to "
+        "the catenary, overhead wire, messenger wire, or pantograph clearance area.\n"
+        "Return this JSON schema exactly:\n"
         "{\n"
         '  "has_tree": true | false,\n'
         '  "bamboo_likely": 0.0,\n'
         '  "near_catenary": true | false,\n'
-        '  "risk_level": "상" | "중" | "하" | "없음",\n'
+        '  "risk_level": "높음" | "중간" | "낮음" | "없음",\n'
         '  "bbox_hint": [x1, y1, x2, y2] | null,\n'
         '  "evidence": "one Korean sentence",\n'
         '  "needs_human_review": true | false\n'
         "}\n"
         "Risk guide:\n"
-        "- 상: vegetation overlaps or appears extremely close to catenary/overhead line.\n"
-        "- 중: vegetation is close enough to require warning-level review.\n"
-        "- 하: vegetation is visible but not clearly near the line.\n"
+        "- 높음: vegetation visibly overlaps, touches, or appears extremely close to the overhead line.\n"
+        "- 중간: vegetation is close enough to require warning-level review.\n"
+        "- 낮음: vegetation is visible but not clearly near the line.\n"
         "- 없음: no obstruction vegetation is visible.\n"
+        "If the perspective is ambiguous, set needs_human_review=true.\n"
     )
-

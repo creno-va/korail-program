@@ -35,6 +35,16 @@ reports/
 *.sqlite3
 *.db
 
+# Local sample videos
+*.mp4
+*.MP4
+*.avi
+*.AVI
+*.mov
+*.MOV
+*.mkv
+*.MKV
+
 # Local model/runtime assets
 assets/models/
 assets/ffmpeg/

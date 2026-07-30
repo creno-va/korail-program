@@ -122,4 +122,3 @@ def _best_overlap(
             best_overlap = overlap
             best_section = section
     return best_section
-

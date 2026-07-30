@@ -10,10 +10,10 @@ class JudgeSchemaTests(unittest.TestCase):
     def test_parse_fenced_json(self) -> None:
         payload = parse_judge_json(
             """```json
-            {"risk_level": "상", "has_tree": true}
+            {"risk_level": "높음", "has_tree": true}
             ```"""
         )
-        self.assertEqual(payload["risk_level"], "상")
+        self.assertEqual(payload["risk_level"], "높음")
 
     def test_judge_observation_from_text(self) -> None:
         observation = judge_observation_from_text(
@@ -24,9 +24,9 @@ class JudgeSchemaTests(unittest.TestCase):
               "has_tree": true,
               "bamboo_likely": 0.82,
               "near_catenary": true,
-              "risk_level": "상",
+              "risk_level": "높음",
               "bbox_hint": [920, 180, 1240, 620],
-              "evidence": "우측 전차선로 주변에 수목이 근접해 보임",
+              "evidence": "우측 전차선로 주변 수목이 근접해 보임",
               "needs_human_review": false
             }
             """,
@@ -38,4 +38,3 @@ class JudgeSchemaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

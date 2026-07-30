@@ -90,7 +90,7 @@ def _coerce_bool(value: Any) -> bool:
     if value is None:
         return False
     normalized = str(value).strip().lower()
-    return normalized in {"true", "yes", "y", "1", "있음", "예", "네", "상", "중", "하"}
+    return normalized in {"true", "yes", "y", "1", "있음", "예", "위험", "주의", "중간", "높음"}
 
 
 def _coerce_bbox(value: Any) -> tuple[int, int, int, int] | None:
@@ -105,4 +105,3 @@ def _coerce_bbox(value: Any) -> tuple[int, int, int, int] | None:
     if x2 <= x1 or y2 <= y1:
         return None
     return (x1, y1, x2, y2)
-

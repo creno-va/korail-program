@@ -16,6 +16,7 @@ class FrameExtractionConfig:
     start_time_ms: int | None = None
     end_time_ms: int | None = None
     image_ext: str = "jpg"
+    max_width: int | None = 1280
 
 
 def build_ffmpeg_frame_command(
@@ -37,7 +38,7 @@ def build_ffmpeg_frame_command(
     if config.end_time_ms is not None:
         duration_ms = config.end_time_ms - (config.start_time_ms or 0)
         command.extend(["-t", _seconds(duration_ms)])
-    command.extend(["-vf", f"fps={config.fps:g}", "-q:v", "2", str(output_pattern)])
+    command.extend(["-vf", _video_filter(config), "-q:v", "2", str(output_pattern)])
     return command
 
 
@@ -56,3 +57,9 @@ def extract_frames(
 def _seconds(milliseconds: int) -> str:
     return f"{milliseconds / 1000:.3f}"
 
+
+def _video_filter(config: FrameExtractionConfig) -> str:
+    filters = [f"fps={config.fps:g}"]
+    if config.max_width is not None and config.max_width > 0:
+        filters.append(f"scale='min({config.max_width},iw)':-2")
+    return ",".join(filters)

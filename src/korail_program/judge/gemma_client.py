@@ -14,7 +14,7 @@ from korail_program.judge.prompts import JUDGE_SYSTEM_PROMPT, build_frame_judge_
 @dataclass(frozen=True, slots=True)
 class OllamaVisionConfig:
     base_url: str = "http://localhost:11434"
-    model: str = "gemma4:12b"
+    model: str = "gemma3:4b"
     timeout_s: int = 120
 
 
@@ -61,4 +61,3 @@ def build_ollama_chat_payload(*, model: str, prompt: str, image_b64: str) -> dic
 
 def encode_image_base64(image_path: str | Path) -> str:
     return base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
-

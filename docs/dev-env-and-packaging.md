@@ -52,6 +52,11 @@ macOS에서 `python3`가 3.11 미만이면 Homebrew 또는 pyenv로 Python 3.11 
 | `scripts/bootstrap.sh` | macOS/Linux | `.venv` 생성 및 editable install |
 | `scripts/run_gui.sh` | macOS/Linux | GUI 실행 |
 | `scripts/test.sh` | macOS/Linux | unittest 실행 |
+| `scripts/install_windows.ps1` | Windows | Python 앱 설치, FFmpeg/Ollama 설치 시도, Gemma 모델 pull |
+| `scripts/install_macos.sh` | macOS | Python 앱 설치, FFmpeg/Ollama 설치 시도, Gemma 모델 pull |
+| `scripts/analyze_root_videos.cmd` | Windows | 루트 영상 배치 분석 |
+| `scripts/analyze_root_videos.ps1` | Windows | PowerShell 루트 영상 배치 분석 |
+| `scripts/analyze_root_videos.sh` | macOS/Linux | 루트 영상 배치 분석 |
 
 ## 현재 프로젝트 구조
 
@@ -89,6 +94,20 @@ PySide6 GUI
   -> PaddleOCR station OCR
   -> SQLite/report outputs
 ```
+
+현재 구현된 배치 분석 경로:
+
+```text
+korail-analyzer analyze-videos
+  -> 루트 또는 지정 경로 영상 검색
+  -> FFmpeg로 N초 간격 프레임 추출
+  -> Ollama Gemma VLM에 이미지 VQA 요청
+  -> JSON schema 검증
+  -> 의심 프레임 captures/ 복사
+  -> HTML/Markdown/JSON 리포트 생성
+```
+
+기본 모델은 `gemma3:4b`입니다. 더 정확한 판정이 필요하고 장비 GPU/메모리가 충분하면 `gemma3:12b` 또는 `gemma3:27b`로 올릴 수 있습니다.
 
 모델 서버 후보:
 

@@ -37,6 +37,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_gui.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
 ```
 
+설치부터 Ollama 모델 다운로드까지 한 번에 진행하려면:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1
+```
+
 ### macOS
 
 ```sh
@@ -52,6 +58,42 @@ sh scripts/test.sh
 ```
 
 `python3`가 3.11 미만이면 Homebrew, pyenv 등으로 Python 3.11 이상을 먼저 설치하세요.
+
+설치부터 Ollama 모델 다운로드까지 한 번에 진행하려면:
+
+```sh
+sh scripts/install_macos.sh
+```
+
+## 루트 영상 배치 분석
+
+프로젝트 루트에 있는 `mp4`, `avi`, `mov`, `mkv` 영상을 일정 간격으로 샘플링하고, 로컬 Gemma VLM으로 전차선/가공전차선 주변 지장수목 의심 프레임을 판정합니다.
+
+Windows:
+
+```powershell
+.\scripts\analyze_root_videos.cmd
+```
+
+macOS:
+
+```sh
+sh scripts/analyze_root_videos.sh
+```
+
+기본값:
+
+- 모델: `gemma3:4b`
+- 샘플링 간격: 10초
+- 리포트 포함 기준: `중간` 이상
+- 산출물: `output/analysis.../report.html`, `report.md`, `observations.json`, `events.json`, `captures/`
+
+간격을 바꾸려면:
+
+```powershell
+$env:KORAIL_INTERVAL_SEC=5
+.\scripts\analyze_root_videos.cmd
+```
 
 ## 문서
 

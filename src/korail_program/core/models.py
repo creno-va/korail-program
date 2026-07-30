@@ -10,9 +10,9 @@ from typing import Any
 class RiskLevel(str, Enum):
     """Business-facing risk labels."""
 
-    HIGH = "상"
-    MEDIUM = "중"
-    LOW = "하"
+    HIGH = "높음"
+    MEDIUM = "중간"
+    LOW = "낮음"
     NONE = "없음"
 
     @classmethod
@@ -24,20 +24,20 @@ class RiskLevel(str, Enum):
 
         normalized = str(value).strip().lower()
         aliases = {
-            "상": cls.HIGH,
-            "high": cls.HIGH,
             "높음": cls.HIGH,
+            "high": cls.HIGH,
             "위험": cls.HIGH,
-            "중": cls.MEDIUM,
+            "danger": cls.HIGH,
+            "중간": cls.MEDIUM,
             "medium": cls.MEDIUM,
-            "보통": cls.MEDIUM,
-            "하": cls.LOW,
-            "low": cls.LOW,
+            "주의": cls.MEDIUM,
+            "warning": cls.MEDIUM,
             "낮음": cls.LOW,
+            "low": cls.LOW,
+            "관찰": cls.LOW,
             "없음": cls.NONE,
             "none": cls.NONE,
             "no": cls.NONE,
-            "없다": cls.NONE,
             "무": cls.NONE,
         }
         if normalized not in aliases:
@@ -138,4 +138,3 @@ def to_jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: to_jsonable(item) for key, item in value.items()}
     return value
-
