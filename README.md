@@ -115,6 +115,21 @@ sh install_macos.sh
 
 릴리즈 설치 스크립트는 최신 릴리즈 소스를 내려받고, 앱 설치, FFmpeg/Ollama 준비, `gemma4:12b` 모델 설치를 순서대로 진행합니다.
 
+## Windows 설치 마법사 빌드
+
+Windows 납품용 실행파일과 설치 마법사는 PyInstaller + Inno Setup으로 생성합니다.
+
+```powershell
+.\scripts\package_windows.cmd
+```
+
+산출물:
+
+- `dist/KorailAnalyzer/KorailAnalyzer.exe`
+- `dist/installer/KorailAnalyzerSetup-<version>.exe`
+
+자세한 내용은 [패키징 문서](./docs/packaging.md)를 참고하세요.
+
 ## 문서
 
 - [문서 인덱스](./docs/README.md)

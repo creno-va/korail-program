@@ -1,6 +1,6 @@
 [project]
 name = "korail-program"
-version = "0.2.0"
+version = "0.3.0"
 description = "Offline desktop analyzer for catenary obstruction tree events in rail cab videos."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,6 +33,9 @@ full = [
 dev = [
     "pytest>=8.3",
     "ruff>=0.8",
+]
+packaging = [
+    "pyinstaller>=6.11",
 ]
 
 [project.scripts]
