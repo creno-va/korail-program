@@ -80,6 +80,7 @@ class ActionButton(QFrame):
         super().__init__()
         self._enabled = True
         self._tone = tone
+        self._icon_label: QLabel | None = None
         self._text_label = QLabel(text)
         self._text_label.setObjectName("ButtonText")
         self.setObjectName("ActionButton")
@@ -97,15 +98,20 @@ class ActionButton(QFrame):
         layout.setSpacing(7)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if icon_name:
-            icon = QLabel()
-            icon.setPixmap(material_icon(icon_name).pixmap(QSize(18, 18)))
-            icon.setFixedSize(18, 18)
-            layout.addWidget(icon)
+            self._icon_label = QLabel()
+            self._icon_label.setFixedSize(18, 18)
+            self.set_icon(icon_name)
+            layout.addWidget(self._icon_label)
         if not compact:
             layout.addWidget(self._text_label)
 
     def setText(self, text: str) -> None:  # noqa: N802
         self._text_label.setText(text)
+
+    def set_icon(self, icon_name: str) -> None:
+        if self._icon_label is None:
+            return
+        self._icon_label.setPixmap(material_icon(icon_name).pixmap(QSize(18, 18)))
 
     def set_tone(self, tone: str) -> None:
         self._tone = tone
@@ -241,10 +247,14 @@ class ProgressTrack(QWidget):
 
 
 class QueueCard(QFrame):
+    remove_requested = Signal()
+
     def __init__(self, queue_file: QueueFile) -> None:
         super().__init__()
         self.queue_file = queue_file
         self.status_chip = StatusChip(queue_file.status, "neutral")
+        self.remove_button = ActionButton("", icon_name="trash-can-outline", compact=True)
+        self.remove_button.setToolTip("목록에서 제거")
         self.setObjectName("QueueCard")
         self._build_ui()
 
@@ -259,6 +269,8 @@ class QueueCard(QFrame):
         name.setWordWrap(True)
         top.addWidget(name, stretch=1)
         top.addWidget(self.status_chip)
+        top.addWidget(self.remove_button)
+        self.remove_button.clicked.connect(self.remove_requested.emit)
 
         meta = QLabel(f"{self.queue_file.size_label} / {self.queue_file.path.suffix.lower()}")
         meta.setObjectName("Tiny")
@@ -275,18 +287,20 @@ class QueueCard(QFrame):
 class AnalysisStatusCard(QFrame):
     start_requested = Signal()
     stop_requested = Signal()
+    remove_requested = Signal()
 
     def __init__(self, queue_file: QueueFile) -> None:
         super().__init__()
         self.queue_file = queue_file
+        self._run_mode = "start"
         self.status_chip = StatusChip("대기", "neutral")
         self.stage_label = QLabel("분석 대기")
         self.stage_label.setObjectName("Muted")
         self.progress = ProgressTrack()
-        self.start_button = ActionButton("시작", icon_name="play-circle-outline")
-        self.stop_button = ActionButton("중지", icon_name="stop-circle-outline", compact=True)
-        self.start_button.setToolTip("이 영상 분석 시작")
-        self.stop_button.setToolTip("이 영상 분석 중지")
+        self.run_button = ActionButton("시작", icon_name="play-circle-outline")
+        self.run_button.setToolTip("이 영상 분석 시작")
+        self.remove_button = ActionButton("", icon_name="trash-can-outline", compact=True)
+        self.remove_button.setToolTip("목록에서 제거")
         self.setObjectName("StatusRow")
         self._build_ui()
         self.set_idle()
@@ -302,10 +316,10 @@ class AnalysisStatusCard(QFrame):
         title.setWordWrap(True)
         top.addWidget(title, stretch=1)
         top.addWidget(self.status_chip)
-        top.addWidget(self.start_button)
-        top.addWidget(self.stop_button)
-        self.start_button.clicked.connect(self.start_requested.emit)
-        self.stop_button.clicked.connect(self.stop_requested.emit)
+        top.addWidget(self.run_button)
+        top.addWidget(self.remove_button)
+        self.run_button.clicked.connect(self._run_requested)
+        self.remove_button.clicked.connect(self.remove_requested.emit)
 
         meta = QHBoxLayout()
         meta.addWidget(self.stage_label, stretch=1)
@@ -325,20 +339,39 @@ class AnalysisStatusCard(QFrame):
         self.progress.set_tone(tone)
 
     def set_idle(self) -> None:
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
+        self._run_mode = "start"
+        self.run_button.setText("시작")
+        self.run_button.set_icon("play-circle-outline")
+        self.run_button.setToolTip("이 영상 분석 시작")
+        self.run_button.setEnabled(True)
+        self.remove_button.setEnabled(True)
 
     def set_running(self) -> None:
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
+        self._run_mode = "stop"
+        self.run_button.setText("중지")
+        self.run_button.set_icon("stop-circle-outline")
+        self.run_button.setToolTip("이 영상 분석 중지")
+        self.run_button.setEnabled(True)
+        self.remove_button.setEnabled(False)
 
     def set_stopping(self) -> None:
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
+        self.run_button.setText("중지 중")
+        self.run_button.setEnabled(False)
+        self.remove_button.setEnabled(False)
 
     def set_finished(self) -> None:
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
+        self._run_mode = "start"
+        self.run_button.setText("다시")
+        self.run_button.set_icon("replay")
+        self.run_button.setToolTip("이 영상 다시 분석")
+        self.run_button.setEnabled(True)
+        self.remove_button.setEnabled(True)
+
+    def _run_requested(self) -> None:
+        if self._run_mode == "stop":
+            self.stop_requested.emit()
+            return
+        self.start_requested.emit()
 
 
 class EventCard(QFrame):
@@ -423,13 +456,23 @@ class _SelectableCard(QFrame):
 class CardList(QFrame):
     files_dropped = Signal(list)
     selection_changed = Signal(object)
+    selection_set_changed = Signal(list)
 
-    def __init__(self, empty_text: str, *, accept_drops: bool = False) -> None:
+    def __init__(
+        self,
+        empty_text: str,
+        *,
+        accept_drops: bool = False,
+        multi_select: bool = False,
+    ) -> None:
         super().__init__()
         self._empty_text = empty_text
+        self._multi_select = multi_select
+        self._items: dict[object, QWidget] = {}
         self._wrappers: dict[object, _SelectableCard] = {}
         self._card_count = 0
         self._selected_key: object | None = None
+        self._selected_keys: set[object] = set()
         self.setObjectName("CardList")
         self.setAcceptDrops(accept_drops)
 
@@ -454,6 +497,8 @@ class CardList(QFrame):
 
     def clear_cards(self) -> None:
         self._selected_key = None
+        self._selected_keys.clear()
+        self._items.clear()
         self._wrappers.clear()
         self._card_count = 0
         while self.content_layout.count():
@@ -469,10 +514,29 @@ class CardList(QFrame):
         self._remove_empty()
         wrapper = _SelectableCard(key, card) if selectable else card
         if isinstance(wrapper, _SelectableCard):
-            wrapper.clicked.connect(self._select)
+            wrapper.clicked.connect(lambda item_key: self._select(item_key, toggle=True))
             self._wrappers[key] = wrapper
+        self._items[key] = wrapper
         self._card_count += 1
         self.content_layout.insertWidget(self.content_layout.count() - 1, wrapper)
+
+    def remove_card(self, key: object) -> None:
+        widget = self._items.pop(key, None)
+        self._wrappers.pop(key, None)
+        if widget is None:
+            return
+        self.content_layout.removeWidget(widget)
+        widget.setParent(None)
+        widget.deleteLater()
+        self._card_count = max(0, self._card_count - 1)
+        was_selected = key in self._selected_keys
+        self._selected_keys.discard(key)
+        if self._selected_key == key:
+            self._selected_key = next(iter(self._selected_keys), None)
+        if not self._card_count:
+            self.set_empty()
+        if was_selected:
+            self.selection_set_changed.emit(list(self._selected_keys))
 
     def set_empty(self) -> None:
         if self._card_count:
@@ -489,13 +553,27 @@ class CardList(QFrame):
 
     def select_key(self, key: object) -> None:
         if key in self._wrappers:
-            self._select(key)
+            self._select(key, toggle=False)
 
-    def _select(self, key: object) -> None:
-        self._selected_key = key
+    def selected_keys(self) -> list[object]:
+        return list(self._selected_keys)
+
+    def _select(self, key: object, *, toggle: bool) -> None:
+        if self._multi_select:
+            if toggle and key in self._selected_keys:
+                self._selected_keys.remove(key)
+                if self._selected_key == key:
+                    self._selected_key = next(iter(self._selected_keys), None)
+            else:
+                self._selected_keys.add(key)
+                self._selected_key = key
+        else:
+            self._selected_keys = {key}
+            self._selected_key = key
         for item_key, wrapper in self._wrappers.items():
-            wrapper.set_selected(item_key == key)
+            wrapper.set_selected(item_key in self._selected_keys)
         self.selection_changed.emit(key)
+        self.selection_set_changed.emit(list(self._selected_keys))
 
     def _remove_empty(self) -> None:
         empty = getattr(self, "_empty", None)

@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
         self._event_capture_paths: dict[int, Path] = {}
         self._last_result: BatchAnalysisResult | None = None
         self._analysis_workers: dict[Path, AnalysisWorker] = {}
+        self._selected_analysis_paths: set[Path] = set()
         self._selected_video_path: Path | None = None
         self._last_progress_log_key: tuple[str, str, int, int] | None = None
         self._selected_model = self._load_selected_model()
@@ -154,20 +155,23 @@ class MainWindow(QMainWindow):
         header.addWidget(self.queue_count_chip)
 
         self.queue_list = CardList(
-            "mp4, avi, mov, mkv 파일을 드래그하거나 아래 버튼으로 추가하세요.",
+            "mp4, avi, mov, mkv 파일 여러 개를 드래그하거나 아래 버튼으로 추가하세요.",
             accept_drops=True,
         )
         self.queue_list.files_dropped.connect(self.add_video_files)
-        self.queue_list.selection_changed.connect(self._on_queue_selection_changed)
 
         bottom_actions = QHBoxLayout()
         bottom_actions.setSpacing(8)
         self.add_files_button = ActionButton("영상 추가", icon_name="folder-plus-outline")
         self.add_files_button.clicked.connect(self._choose_files)
+        self.add_folder_button = ActionButton("", icon_name="folder-open-outline", compact=True)
+        self.add_folder_button.setToolTip("폴더의 영상 추가")
+        self.add_folder_button.clicked.connect(self._choose_folder)
         self.more_button = ActionButton("", icon_name="dots-horizontal", compact=True)
         self.more_button.setToolTip("대기열 비우기")
         self.more_button.clicked.connect(self._clear_queue_with_confirm)
         bottom_actions.addWidget(self.add_files_button, stretch=1)
+        bottom_actions.addWidget(self.add_folder_button)
         bottom_actions.addWidget(self.more_button)
 
         layout.addLayout(header)
@@ -216,7 +220,7 @@ class MainWindow(QMainWindow):
         action_buttons = QHBoxLayout()
         self.install_model_button = ActionButton("모델 설정", icon_name="tune")
         self.install_model_button.clicked.connect(self.install_model)
-        self.start_button = ActionButton("선택 영상 분석", icon_name="play-circle-outline")
+        self.start_button = ActionButton("선택 항목 분석", icon_name="play-circle-outline")
         self.start_button.clicked.connect(self.start_analysis)
         self.export_button = ActionButton("리포트 열기", icon_name="file-document-outline")
         self.export_button.clicked.connect(self.export_report)
@@ -236,7 +240,12 @@ class MainWindow(QMainWindow):
         status_header.addStretch(1)
         status_header.addWidget(self.session_chip)
 
-        self.analysis_list = CardList("영상을 추가하면 파일별 분석 진행률이 표시됩니다.")
+        self.analysis_list = CardList(
+            "영상을 추가한 뒤 분석할 항목을 선택하세요.",
+            multi_select=True,
+        )
+        self.analysis_list.selection_changed.connect(self._on_analysis_selection_changed)
+        self.analysis_list.selection_set_changed.connect(self._on_analysis_selection_set_changed)
 
         result_header = QHBoxLayout()
         result_title = QLabel("탐지 이벤트")
@@ -354,23 +363,22 @@ class MainWindow(QMainWindow):
         self._log(f"모델 선택: {model_tag}")
 
     def _choose_files(self) -> None:
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "영상 파일 선택",
-            "",
-            "Video Files (*.mp4 *.avi *.mov *.mkv);;All Files (*)",
-        )
-        self.add_video_files([Path(file) for file in files])
+        dialog = QFileDialog(self, "영상 파일 선택")
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
+        dialog.setNameFilter("Video Files (*.mp4 *.avi *.mov *.mkv);;All Files (*)")
+        if dialog.exec():
+            self.add_video_files([Path(file) for file in dialog.selectedFiles()])
+
+    def _choose_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "영상 폴더 선택")
+        if folder:
+            self.add_video_files([Path(folder)])
 
     def add_video_files(self, paths: list[Path]) -> None:
         added = 0
-        skipped = 0
+        candidates, skipped = _video_candidates(paths)
         first_added: Path | None = None
-        for path in paths:
-            if not path.exists() or path.suffix.lower() not in VIDEO_EXTENSIONS:
-                skipped += 1
-                continue
-            normalized = path.resolve()
+        for normalized in candidates:
             if normalized in self._queued_files:
                 skipped += 1
                 continue
@@ -378,8 +386,11 @@ class MainWindow(QMainWindow):
             queue_file = QueueFile(path=normalized, size_bytes=normalized.stat().st_size)
             self._queued_files[normalized] = queue_file
             queue_card = QueueCard(queue_file)
+            queue_card.remove_requested.connect(
+                lambda target=normalized: self._remove_video_with_confirm(target)
+            )
             self._queue_cards[normalized] = queue_card
-            self.queue_list.add_card(normalized, queue_card)
+            self.queue_list.add_card(normalized, queue_card, selectable=False)
             self._add_analysis_status_card(normalized, queue_file)
             first_added = first_added or normalized
             added += 1
@@ -390,7 +401,7 @@ class MainWindow(QMainWindow):
             self._log(f"중복 또는 미지원 파일 {skipped}개 제외")
         self._refresh_header()
         if first_added is not None:
-            self.queue_list.select_key(first_added)
+            self.analysis_list.select_key(first_added)
         self._sync_primary_actions()
 
     def _clear_queue_with_confirm(self) -> None:
@@ -417,6 +428,7 @@ class MainWindow(QMainWindow):
         self._event_payloads.clear()
         self._event_capture_paths.clear()
         self._last_result = None
+        self._selected_analysis_paths.clear()
         self._selected_video_path = None
         self.queue_list.clear_cards()
         self.analysis_list.clear_cards()
@@ -430,20 +442,78 @@ class MainWindow(QMainWindow):
         self._refresh_header()
         self._sync_primary_actions()
 
+    def _remove_video_with_confirm(self, path: Path) -> None:
+        if path in self._analysis_workers:
+            self._log(f"진행 중인 영상은 삭제할 수 없습니다: {path.name}")
+            QMessageBox.warning(self, "분석 진행 중", "먼저 해당 영상 분석을 중지하세요.")
+            return
+        if path not in self._queued_files:
+            return
+        answer = QMessageBox.question(
+            self,
+            "영상 제거",
+            f"{path.name}을(를) 목록에서 제거할까요?\n원본 영상과 리포트 파일은 삭제하지 않습니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._remove_video(path)
+
+    def _remove_video(self, path: Path) -> None:
+        result = self._analysis_results.pop(path, None)
+        self._queued_files.pop(path, None)
+        self._queue_cards.pop(path, None)
+        self._analysis_cards.pop(path, None)
+        self._selected_analysis_paths.discard(path)
+        self.queue_list.remove_card(path)
+        self.analysis_list.remove_card(path)
+
+        if self._last_result is result:
+            self._last_result = None
+        if self._selected_video_path == path:
+            self._selected_video_path = None
+            fallback = next(
+                (candidate for candidate in self._queued_files if candidate in self._selected_analysis_paths),
+                None,
+            )
+            if fallback is not None:
+                self._show_video_details(fallback)
+            else:
+                self.events_list.set_empty_text("분석할 영상을 선택하세요.")
+                self.events_list.clear_cards()
+                self.event_count_chip.setText("0건")
+                self.event_count_chip.set_tone("neutral")
+                self._clear_inspector()
+        self._refresh_header()
+        self._sync_primary_actions()
+        self._log(f"영상 제거: {path.name}")
+
     def start_analysis(self) -> None:
         if not self._queued_files:
             self._log("분석 보류: 영상 파일 없음")
             QMessageBox.warning(self, "영상 없음", "분석할 영상 파일을 먼저 등록하세요.")
             return
-        path = self._selected_video_path or next(iter(self._queued_files))
-        self._start_video_analysis(path)
+        targets = [
+            path
+            for path in self._queued_files
+            if path in self._selected_analysis_paths and path not in self._analysis_workers
+        ]
+        if not targets:
+            self._log("분석 보류: 영상별 분석 로그에서 실행할 항목을 선택하세요.")
+            QMessageBox.information(
+                self,
+                "분석 항목 선택",
+                "가운데 영상별 분석 로그에서 분석할 영상을 선택하세요.",
+            )
+            return
+        for path in targets:
+            self._start_video_analysis(path)
 
     def _start_video_analysis(self, path: Path) -> None:
         if path in self._analysis_workers:
             self._log(f"분석이 이미 진행 중입니다: {path.name}")
             return
         self._selected_video_path = path
-        self.queue_list.select_key(path)
+        self.analysis_list.select_key(path)
         ollama_path = resolve_ollama_executable()
         if ollama_path is None:
             self.runtime_chip.setText(_ollama_runtime_error_label())
@@ -860,8 +930,38 @@ class MainWindow(QMainWindow):
         self.evidence_panel.set_text(str(event.get("summary", "")))
         self._set_capture_preview(self._event_capture_paths.get(int(key)))
 
-    def _on_queue_selection_changed(self, key: object) -> None:
+    def _on_analysis_selection_set_changed(self, keys: list[object]) -> None:
+        self._selected_analysis_paths = {
+            Path(str(key)) for key in keys if Path(str(key)) in self._queued_files
+        }
+        self._sync_primary_actions()
+
+    def _on_analysis_selection_changed(self, key: object) -> None:
         path = Path(str(key))
+        selected_paths = {Path(str(item)) for item in self.analysis_list.selected_keys()}
+        self._selected_analysis_paths = {
+            selected for selected in selected_paths if selected in self._queued_files
+        }
+        if path in self._selected_analysis_paths:
+            self._show_video_details(path)
+            return
+        fallback = next(
+            (candidate for candidate in self._queued_files if candidate in self._selected_analysis_paths),
+            None,
+        )
+        if fallback is not None:
+            self._show_video_details(fallback)
+            return
+        self._selected_video_path = None
+        self._last_result = None
+        self.events_list.set_empty_text("분석할 영상을 선택하세요.")
+        self.events_list.clear_cards()
+        self.event_count_chip.setText("0건")
+        self.event_count_chip.set_tone("neutral")
+        self._clear_inspector()
+        self._sync_primary_actions()
+
+    def _show_video_details(self, path: Path) -> None:
         queue_file = self._queued_files.get(path)
         if queue_file is None:
             return
@@ -883,6 +983,12 @@ class MainWindow(QMainWindow):
             self._populate_events(result, empty_text=_event_empty_message(result))
             self.event_count_chip.setText(f"{result.event_count}건")
             self.event_count_chip.set_tone("success" if result.event_count else "neutral")
+        else:
+            self._last_result = None
+            self.events_list.set_empty_text("분석 결과가 생성되면 이벤트가 카드로 정리됩니다.")
+            self.events_list.clear_cards()
+            self.event_count_chip.setText("0건")
+            self.event_count_chip.set_tone("neutral")
         self._sync_primary_actions()
 
     def _set_capture_preview(self, path: Path | None) -> None:
@@ -933,7 +1039,8 @@ class MainWindow(QMainWindow):
         card = AnalysisStatusCard(queue_file)
         card.start_requested.connect(lambda target=path: self._start_video_analysis(target))
         card.stop_requested.connect(lambda target=path: self._stop_video_analysis(target))
-        self.analysis_list.add_card(path, card, selectable=False)
+        card.remove_requested.connect(lambda target=path: self._remove_video_with_confirm(target))
+        self.analysis_list.add_card(path, card)
         self._analysis_cards[path] = card
 
     def _refresh_model_summary(self) -> None:
@@ -952,10 +1059,22 @@ class MainWindow(QMainWindow):
     def _sync_primary_actions(self) -> None:
         if not hasattr(self, "start_button"):
             return
-        selected = self._selected_video_path
-        self.start_button.setEnabled(
-            selected is not None and selected in self._queued_files and selected not in self._analysis_workers
-        )
+        selected_targets = [
+            path
+            for path in self._queued_files
+            if path in self._selected_analysis_paths and path not in self._analysis_workers
+        ]
+        if selected_targets:
+            self.start_button.setText(
+                f"선택 {len(selected_targets)}개 분석"
+                if len(selected_targets) > 1
+                else "선택 영상 분석"
+            )
+            self.start_button.setToolTip("선택한 영상 분석 시작")
+        else:
+            self.start_button.setText("선택 항목 분석")
+            self.start_button.setToolTip("영상별 분석 로그에서 항목을 선택하세요.")
+        self.start_button.setEnabled(bool(selected_targets))
         self.export_button.setEnabled(self._last_result is not None)
 
     def _log(self, message: str) -> None:
@@ -1025,6 +1144,37 @@ def _safe_report_dir(path: Path) -> str:
     stem = path.stem.strip() or "video"
     safe = "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in stem)
     return safe[:80] or "video"
+
+
+def _video_candidates(paths: list[Path]) -> tuple[list[Path], int]:
+    candidates: list[Path] = []
+    skipped = 0
+    for path in paths:
+        try:
+            if path.is_dir():
+                videos = [item for item in path.iterdir() if _is_supported_video(item)]
+                candidates.extend(videos)
+                if not videos:
+                    skipped += 1
+                continue
+            if _is_supported_video(path):
+                candidates.append(path)
+            else:
+                skipped += 1
+        except OSError:
+            skipped += 1
+
+    resolved: dict[Path, None] = {}
+    for candidate in candidates:
+        try:
+            resolved[candidate.resolve()] = None
+        except OSError:
+            skipped += 1
+    return sorted(resolved), skipped
+
+
+def _is_supported_video(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
 
 
 def _ollama_runtime_error_label() -> str:
