@@ -43,7 +43,7 @@ def bundled_ollama_runtime_ready() -> bool:
         return False
     if os.name == "nt":
         return bundled_ollama_server_executable().exists()
-    return _bundled_ollama_resources_available()
+    return True
 
 
 def resolve_ollama_executable() -> Path | None:

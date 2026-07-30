@@ -42,6 +42,20 @@ class RuntimeDiscoveryTests(unittest.TestCase):
                 self.assertEqual(runtime.bundled_ollama_server_executable(), llama_server)
                 self.assertTrue(runtime.bundled_ollama_runtime_ready())
 
+    def test_accepts_macos_ollama_executable_without_server_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            ollama = root / "runtime" / "ollama" / "ollama"
+            ollama.parent.mkdir(parents=True, exist_ok=True)
+            ollama.write_bytes(b"")
+
+            with (
+                patch.object(runtime, "application_root", return_value=root),
+                patch.object(runtime.os, "name", "posix"),
+            ):
+                self.assertEqual(runtime.bundled_ollama_executable(), ollama)
+                self.assertTrue(runtime.bundled_ollama_runtime_ready())
+
 
 if __name__ == "__main__":
     unittest.main()
