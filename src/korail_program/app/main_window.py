@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
         self.runtime_chip = StatusChip("런타임 점검", "warning")
-        self.model_chip = StatusChip("Gemma4 12B 필요", "warning")
+        self.model_chip = StatusChip(f"{DEFAULT_VISION_MODEL} 필요", "warning")
         self.ocr_chip = StatusChip("VLM OCR 대기", "warning")
         action_row.addWidget(self.runtime_chip)
         action_row.addWidget(self.model_chip)
@@ -440,7 +440,7 @@ class MainWindow(QMainWindow):
         self.session_chip.set_tone(tone)
         self.event_count_chip.setText(f"{result.event_count}건")
         self.event_count_chip.set_tone("success" if result.event_count else tone)
-        self.model_chip.setText("Gemma4 12B 사용")
+        self.model_chip.setText(f"{DEFAULT_VISION_MODEL} 사용")
         self.model_chip.set_tone("error" if result.aborted else "success")
         self.ocr_chip.setText(f"VLM OCR {result.ocr_observation_count}건")
         self.ocr_chip.set_tone("success" if result.ocr_observation_count else tone)
@@ -588,7 +588,7 @@ class MainWindow(QMainWindow):
     def _handle_model_install_finished(self, exit_code: int, _exit_status=None) -> None:
         self.install_model_button.setEnabled(True)
         if exit_code == 0:
-            self.model_chip.setText("Gemma4 12B 설치됨")
+            self.model_chip.setText(f"{DEFAULT_VISION_MODEL} 설치됨")
             self.model_chip.set_tone("success")
             self.ocr_chip.setText("VLM OCR 준비")
             self.ocr_chip.set_tone("success")

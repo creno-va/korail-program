@@ -10,6 +10,7 @@ from korail_program.judge.gemma_client import (
     OllamaVisionConfig,
     encode_image_base64,
     extract_ollama_message_content,
+    ollama_options,
     post_ollama_chat,
 )
 from korail_program.judge.schema import parse_judge_json
@@ -54,6 +55,7 @@ class VlmStationOcrEngine:
             model=self.config.model,
             image_b64=encode_image_base64(image_path),
             route_hint=route_hint,
+            options=ollama_options(self.config),
         )
         response_text = extract_ollama_message_content(
             post_ollama_chat(
@@ -75,6 +77,7 @@ def _build_station_ocr_payload(
     model: str,
     image_b64: str,
     route_hint: str | None,
+    options: dict[str, object] | None = None,
 ) -> dict[str, object]:
     hint = f"\nRoute/station hint: {route_hint}" if route_hint else ""
     prompt = (
@@ -82,7 +85,7 @@ def _build_station_ocr_payload(
         "text that is actually visible. Return JSON only."
         f"{hint}"
     )
-    return {
+    payload: dict[str, object] = {
         "model": model,
         "stream": False,
         "format": "json",
@@ -91,6 +94,9 @@ def _build_station_ocr_payload(
             {"role": "user", "content": prompt, "images": [image_b64]},
         ],
     }
+    if options:
+        payload["options"] = options
+    return payload
 
 
 def _coerce_text(value: Any) -> str:

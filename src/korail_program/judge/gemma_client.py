@@ -1,4 +1,4 @@
-"""Local Gemma vision judge client adapters."""
+"""Local vision judge client adapters."""
 
 from __future__ import annotations
 
@@ -10,7 +10,12 @@ from typing import Any
 import urllib.error
 import urllib.request
 
-from korail_program.config import DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
+from korail_program.config import (
+    DEFAULT_OLLAMA_NUM_CTX,
+    DEFAULT_OLLAMA_TEMPERATURE,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_VISION_MODEL,
+)
 from korail_program.judge.prompts import JUDGE_SYSTEM_PROMPT, build_frame_judge_prompt
 
 
@@ -19,6 +24,8 @@ class OllamaVisionConfig:
     base_url: str = DEFAULT_OLLAMA_URL
     model: str = DEFAULT_VISION_MODEL
     timeout_s: int = 120
+    num_ctx: int = DEFAULT_OLLAMA_NUM_CTX
+    temperature: float = DEFAULT_OLLAMA_TEMPERATURE
 
 
 class OllamaApiError(RuntimeError):
@@ -50,6 +57,7 @@ class OllamaVisionJudgeClient:
             model=self.config.model,
             prompt=build_frame_judge_prompt(route_hint=route_hint),
             image_b64=image_b64,
+            options=ollama_options(self.config),
         )
         return extract_ollama_message_content(
             post_ollama_chat(
@@ -150,8 +158,14 @@ def _extract_error_detail(body_text: str) -> str:
     return body_text
 
 
-def build_ollama_chat_payload(*, model: str, prompt: str, image_b64: str) -> dict[str, object]:
-    return {
+def build_ollama_chat_payload(
+    *,
+    model: str,
+    prompt: str,
+    image_b64: str,
+    options: dict[str, object] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "model": model,
         "stream": False,
         "format": "json",
@@ -159,6 +173,16 @@ def build_ollama_chat_payload(*, model: str, prompt: str, image_b64: str) -> dic
             {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
             {"role": "user", "content": prompt, "images": [image_b64]},
         ],
+    }
+    if options:
+        payload["options"] = options
+    return payload
+
+
+def ollama_options(config: OllamaVisionConfig) -> dict[str, object]:
+    return {
+        "num_ctx": config.num_ctx,
+        "temperature": config.temperature,
     }
 
 

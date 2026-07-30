@@ -10,7 +10,7 @@ Windows 배포는 두 단계로 구성합니다.
 - Ollama standalone Windows runtime: `runtime/ollama/ollama.exe`
 - FFmpeg/FFprobe: `runtime/ffmpeg/bin/`
 
-앱의 모델 설치 버튼은 설치된 PC의 PATH가 아니라 이 번들 런타임을 우선 사용합니다. 기본 역명 OCR도 `gemma4:12b` VLM OCR 프롬프트를 사용하므로 별도 OCR 패키지 설치가 필요 없습니다.
+앱의 모델 설치 버튼은 설치된 PC의 PATH가 아니라 이 번들 런타임을 우선 사용합니다. 기본 역명 OCR도 `qwen2.5vl:3b` VLM OCR 프롬프트를 사용하므로 별도 OCR 패키지 설치가 필요 없습니다.
 
 ## 로컬 빌드
 
@@ -42,5 +42,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package_windows.ps1 -BuildApp
 - Python 미설치 가능
 - Ollama 미설치 가능
 - FFmpeg 미설치 가능
-- 앱 최초 실행 후 `모델 설치` 버튼으로 `gemma4:12b` 모델 다운로드
+- 앱 최초 실행 후 `모델 설치` 버튼으로 `qwen2.5vl:3b` 모델 다운로드
 - 모델 다운로드 완료 후 네트워크 없이 영상 분석 가능

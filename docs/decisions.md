@@ -44,7 +44,7 @@ docs/
 
 ## D-004. 프레임 판정 모델
 
-결정: 초기 MVP에서는 YOLO를 배제하고 Gemma 4 12B Unified 로컬 멀티모달 LLM으로 VQA judge를 수행한다.
+결정: 초기 MVP에서는 YOLO를 배제하고 `qwen2.5vl:3b` 로컬 멀티모달 LLM으로 VQA judge를 수행한다.
 
 역할:
 
@@ -67,7 +67,7 @@ docs/
 이유:
 
 - 납품 PC에 Python 개발 환경, PaddleOCR, PaddlePaddle을 별도로 설치하지 않아도 앱 기본 기능이 동작해야 함
-- 앱 내 모델 설치로 받은 `gemma4:12b`를 judge와 OCR이 공유하면 설치 리소스와 장애 지점이 줄어듦
+- 앱 내 모델 설치로 받은 `qwen2.5vl:3b`를 judge와 OCR이 공유하면 설치 리소스와 장애 지점이 줄어듦
 - OCR 실패가 judge 결과에 직접 영향을 주지 않도록 책임은 계속 분리함
 - 역명 사전, 노선 정보, 전후 보간을 결합해 오인식을 줄일 수 있음
 

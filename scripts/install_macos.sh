@@ -5,7 +5,7 @@ SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 PROJECT_ROOT=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_ROOT"
 
-MODEL=${MODEL:-gemma4:12b}
+MODEL=${MODEL:-qwen2.5vl:3b}
 PYTHON_BIN=${PYTHON_BIN:-python3}
 
 if command -v brew >/dev/null 2>&1; then

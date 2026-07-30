@@ -1,5 +1,5 @@
 param(
-    [string]$Model = "gemma4:12b",
+    [string]$Model = "qwen2.5vl:3b",
     [switch]$SkipSystemPackages,
     [switch]$RunGui,
     [switch]$RunRootAnalysis

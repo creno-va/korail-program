@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 
 from korail_program.analysis.batch import BatchAnalysisConfig, run_batch_analysis
-from korail_program.config import DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
+from korail_program.config import DEFAULT_MAX_FRAME_WIDTH, DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
 from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.models import RiskLevel, SectionMapping, to_jsonable
 from korail_program.db.repository import initialize_database
@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--route-hint")
     analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH") or str(resolve_ffmpeg_executable()))
     analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH") or str(resolve_ffprobe_executable()))
-    analyze.add_argument("--max-width", type=int, default=1280)
+    analyze.add_argument("--max-width", type=int, default=DEFAULT_MAX_FRAME_WIDTH)
     analyze.add_argument(
         "--ocr-backend",
         choices=["vlm", "auto", "paddle", "none"],

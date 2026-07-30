@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
+from korail_program.config import DEFAULT_MAX_FRAME_WIDTH
+
 
 @dataclass(frozen=True, slots=True)
 class FrameExtractionConfig:
@@ -16,7 +18,7 @@ class FrameExtractionConfig:
     start_time_ms: int | None = None
     end_time_ms: int | None = None
     image_ext: str = "jpg"
-    max_width: int | None = 1280
+    max_width: int | None = DEFAULT_MAX_FRAME_WIDTH
 
 
 def build_ffmpeg_frame_command(

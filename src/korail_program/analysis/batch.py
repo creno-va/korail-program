@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 
 from korail_program.analysis.report import write_reports
-from korail_program.config import DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
+from korail_program.config import DEFAULT_MAX_FRAME_WIDTH, DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
 from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.frame_extractor import FrameExtractionConfig, extract_frames
 from korail_program.core.models import (
@@ -48,7 +48,7 @@ class BatchAnalysisConfig:
     route_hint: str | None = None
     ffmpeg_path: str | Path = "ffmpeg"
     ffprobe_path: str | Path = "ffprobe"
-    max_width: int | None = 1280
+    max_width: int | None = DEFAULT_MAX_FRAME_WIDTH
     min_report_risk: RiskLevel = RiskLevel.MEDIUM
     recursive: bool = False
     ocr_backend: str = "vlm"
