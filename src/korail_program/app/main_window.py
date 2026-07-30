@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSize, Qt
+from PySide6.QtCore import QProcess, QProcessEnvironment, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -41,6 +41,7 @@ from korail_program.app.widgets import (
     horizontal_divider,
 )
 from korail_program.config import DEFAULT_VISION_MODEL
+from korail_program.runtime import ollama_process_environment, resolve_ollama_executable
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 DETAIL_FIELDS = ("영상", "구간", "타임코드", "위험도", "OCR", "검수")
@@ -54,6 +55,7 @@ class MainWindow(QMainWindow):
         self._analysis_cards: dict[Path, AnalysisStatusCard] = {}
         self._analysis_empty_item: QListWidgetItem | None = None
         self._model_install_process: QProcess | None = None
+        self._ollama_server_process: QProcess | None = None
         self.setWindowTitle("전차선로 지장수목 분석")
         self.resize(1360, 860)
         self.setMinimumSize(1120, 720)
@@ -382,10 +384,26 @@ class MainWindow(QMainWindow):
                 self._log("모델 설치가 이미 진행 중입니다.")
                 return
 
+        ollama_path = resolve_ollama_executable()
+        if ollama_path is None:
+            self.model_chip.setText("Ollama 없음")
+            self.model_chip.set_tone("error")
+            QMessageBox.warning(
+                self,
+                "Ollama 런타임 없음",
+                "앱 설치에 Ollama 런타임이 포함되어 있지 않습니다. 설치 파일을 다시 받아 설치하세요.",
+            )
+            return
+
+        self._ensure_ollama_server(str(ollama_path))
+        QTimer.singleShot(1800, lambda: self._start_model_pull(str(ollama_path)))
+
+    def _start_model_pull(self, ollama_path: str) -> None:
         process = QProcess(self)
         self._model_install_process = process
-        process.setProgram("ollama")
+        process.setProgram(ollama_path)
         process.setArguments(["pull", DEFAULT_VISION_MODEL])
+        process.setProcessEnvironment(_process_environment())
         process.readyReadStandardOutput.connect(
             lambda: self._append_process_output(process.readAllStandardOutput())
         )
@@ -400,6 +418,25 @@ class MainWindow(QMainWindow):
         self.model_chip.set_tone("warning")
         self._log(f"모델 설치 시작: ollama pull {DEFAULT_VISION_MODEL}")
         process.start()
+
+    def _ensure_ollama_server(self, ollama_path: str) -> None:
+        if self._ollama_server_process is not None:
+            if self._ollama_server_process.state() != QProcess.ProcessState.NotRunning:
+                return
+
+        server = QProcess(self)
+        self._ollama_server_process = server
+        server.setProgram(ollama_path)
+        server.setArguments(["serve"])
+        server.setProcessEnvironment(_process_environment())
+        server.readyReadStandardOutput.connect(
+            lambda: self._append_process_output(server.readAllStandardOutput())
+        )
+        server.readyReadStandardError.connect(
+            lambda: self._append_process_output(server.readAllStandardError())
+        )
+        server.start()
+        self._log("Ollama 로컬 서버 시작")
 
     def _append_process_output(self, payload) -> None:
         text = bytes(payload).decode("utf-8", errors="replace").strip()
@@ -525,3 +562,10 @@ class MainWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.log.appendPlainText(message)
+
+
+def _process_environment() -> QProcessEnvironment:
+    env = QProcessEnvironment.systemEnvironment()
+    for key, value in ollama_process_environment().items():
+        env.insert(key, value)
+    return env

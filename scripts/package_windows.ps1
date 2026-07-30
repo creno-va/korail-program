@@ -2,6 +2,7 @@ param(
     [string]$Version,
     [switch]$SkipInnoInstall,
     [switch]$SkipPyInstallerInstall,
+    [switch]$SkipRuntimeDownloads,
     [string]$InnoSetupVersion = "6.7.1",
     [switch]$BuildAppOnly
 )
@@ -90,6 +91,112 @@ function Install-PortableInnoSetup {
     return $Iscc.FullName
 }
 
+function Get-GitHubReleaseAssetUrl {
+    param(
+        [string]$Repository,
+        [string]$AssetName
+    )
+    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repository/releases/latest"
+    $Asset = $Release.assets | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
+    if (-not $Asset) {
+        throw "Could not find GitHub release asset: $Repository / $AssetName"
+    }
+    return $Asset.browser_download_url
+}
+
+function Install-OllamaRuntime {
+    $VendorRoot = Resolve-InWorkspace "packaging\vendor\ollama"
+    $OllamaExe = Join-Path $VendorRoot "ollama.exe"
+    if (Test-Path -LiteralPath $OllamaExe) {
+        return $OllamaExe
+    }
+
+    New-Item -ItemType Directory -Force -Path $VendorRoot | Out-Null
+    $ToolsRoot = Resolve-InWorkspace ".tools"
+    New-Item -ItemType Directory -Force -Path $ToolsRoot | Out-Null
+    $ZipPath = Join-Path $ToolsRoot "ollama-windows-amd64.zip"
+    $ExtractPath = Join-Path $ToolsRoot "ollama-windows-amd64"
+    $Url = Get-GitHubReleaseAssetUrl -Repository "ollama/ollama" -AssetName "ollama-windows-amd64.zip"
+
+    Write-Host "Downloading Ollama runtime: $Url"
+    Invoke-WebRequest -Uri $Url -OutFile $ZipPath
+    if (Test-Path -LiteralPath $ExtractPath) {
+        Remove-Item -LiteralPath $ExtractPath -Recurse -Force
+    }
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractPath -Force
+
+    $ExtractedOllama = Get-ChildItem -LiteralPath $ExtractPath -Recurse -Filter "ollama.exe" |
+        Select-Object -First 1
+    if (-not $ExtractedOllama) {
+        throw "Could not find ollama.exe in downloaded runtime."
+    }
+    Copy-Item -LiteralPath $ExtractedOllama.FullName -Destination $OllamaExe -Force
+    return $OllamaExe
+}
+
+function Install-FfmpegRuntime {
+    $VendorBin = Resolve-InWorkspace "packaging\vendor\ffmpeg\bin"
+    $FfmpegExe = Join-Path $VendorBin "ffmpeg.exe"
+    $FfprobeExe = Join-Path $VendorBin "ffprobe.exe"
+    if ((Test-Path -LiteralPath $FfmpegExe) -and (Test-Path -LiteralPath $FfprobeExe)) {
+        return $VendorBin
+    }
+
+    New-Item -ItemType Directory -Force -Path $VendorBin | Out-Null
+    $ToolsRoot = Resolve-InWorkspace ".tools"
+    New-Item -ItemType Directory -Force -Path $ToolsRoot | Out-Null
+    $ZipPath = Join-Path $ToolsRoot "ffmpeg-release-essentials.zip"
+    $ExtractPath = Join-Path $ToolsRoot "ffmpeg-release-essentials"
+    $Url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+
+    Write-Host "Downloading FFmpeg runtime: $Url"
+    Invoke-WebRequest -Uri $Url -OutFile $ZipPath
+    if (Test-Path -LiteralPath $ExtractPath) {
+        Remove-Item -LiteralPath $ExtractPath -Recurse -Force
+    }
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractPath -Force
+
+    $ExtractedFfmpeg = Get-ChildItem -LiteralPath $ExtractPath -Recurse -Filter "ffmpeg.exe" |
+        Select-Object -First 1
+    if (-not $ExtractedFfmpeg) {
+        throw "Could not find ffmpeg.exe in downloaded runtime."
+    }
+    $ExtractedBin = $ExtractedFfmpeg.Directory.FullName
+    foreach ($Name in @("ffmpeg.exe", "ffprobe.exe")) {
+        $Source = Join-Path $ExtractedBin $Name
+        if (-not (Test-Path -LiteralPath $Source)) {
+            throw "Could not find $Name in downloaded runtime."
+        }
+        Copy-Item -LiteralPath $Source -Destination (Join-Path $VendorBin $Name) -Force
+    }
+    return $VendorBin
+}
+
+function Copy-BundledRuntime {
+    $RuntimeRoot = Resolve-InWorkspace "dist\KorailAnalyzer\runtime"
+    New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
+
+    $OllamaSource = Resolve-InWorkspace "packaging\vendor\ollama"
+    if (-not (Test-Path -LiteralPath (Join-Path $OllamaSource "ollama.exe"))) {
+        throw "Ollama runtime is missing. Rerun without -SkipRuntimeDownloads."
+    }
+    $OllamaTarget = Join-Path $RuntimeRoot "ollama"
+    if (Test-Path -LiteralPath $OllamaTarget) {
+        Remove-Item -LiteralPath $OllamaTarget -Recurse -Force
+    }
+    Copy-Item -LiteralPath $OllamaSource -Destination $OllamaTarget -Recurse
+
+    $FfmpegSource = Resolve-InWorkspace "packaging\vendor\ffmpeg"
+    if (-not (Test-Path -LiteralPath (Join-Path $FfmpegSource "bin\ffmpeg.exe"))) {
+        throw "FFmpeg runtime is missing. Rerun without -SkipRuntimeDownloads."
+    }
+    $FfmpegTarget = Join-Path $RuntimeRoot "ffmpeg"
+    if (Test-Path -LiteralPath $FfmpegTarget) {
+        Remove-Item -LiteralPath $FfmpegTarget -Recurse -Force
+    }
+    Copy-Item -LiteralPath $FfmpegSource -Destination $FfmpegTarget -Recurse
+}
+
 if (-not $Version) {
     $Version = Get-ProjectVersion
 }
@@ -116,6 +223,12 @@ $AppExe = Resolve-InWorkspace "dist\KorailAnalyzer\KorailAnalyzer.exe"
 if (-not (Test-Path -LiteralPath $AppExe)) {
     throw "PyInstaller did not create $AppExe"
 }
+
+if (-not $SkipRuntimeDownloads) {
+    Install-OllamaRuntime | Out-Null
+    Install-FfmpegRuntime | Out-Null
+}
+Copy-BundledRuntime
 
 if ($BuildAppOnly) {
     Write-Host "App bundle created: $AppExe"

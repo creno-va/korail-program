@@ -5,6 +5,13 @@ Windows 배포는 두 단계로 구성합니다.
 1. PyInstaller로 `dist/KorailAnalyzer/KorailAnalyzer.exe` one-folder 앱 생성
 2. Inno Setup으로 `dist/installer/KorailAnalyzerSetup-<version>.exe` 설치 마법사 생성
 
+빌드 스크립트는 설치 exe에 다음 런타임도 함께 포함합니다.
+
+- Ollama standalone Windows runtime: `runtime/ollama/ollama.exe`
+- FFmpeg/FFprobe: `runtime/ffmpeg/bin/`
+
+앱의 모델 설치 버튼은 설치된 PC의 PATH가 아니라 이 번들 런타임을 우선 사용합니다.
+
 ## 로컬 빌드
 
 ```powershell

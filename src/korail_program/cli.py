@@ -14,6 +14,7 @@ from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.models import RiskLevel, SectionMapping, to_jsonable
 from korail_program.db.repository import initialize_database
 from korail_program.judge.schema import judge_observation_from_payload
+from korail_program.runtime import resolve_ffmpeg_executable, resolve_ffprobe_executable
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,8 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL))
     analyze.add_argument("--ollama-url", default=os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_URL))
     analyze.add_argument("--route-hint")
-    analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH", "ffmpeg"))
-    analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH", "ffprobe"))
+    analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH") or str(resolve_ffmpeg_executable()))
+    analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH") or str(resolve_ffprobe_executable()))
     analyze.add_argument("--max-width", type=int, default=1280)
     analyze.add_argument(
         "--min-report-risk",

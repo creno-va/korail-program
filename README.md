@@ -128,6 +128,8 @@ Windows 납품용 실행파일과 설치 마법사는 PyInstaller + Inno Setup�
 - `dist/KorailAnalyzer/KorailAnalyzer.exe`
 - `dist/installer/KorailAnalyzerSetup-<version>.exe`
 
+설치 마법사에는 Ollama standalone runtime과 FFmpeg/FFprobe가 포함됩니다. 사용자는 별도 Ollama/FFmpeg 설치 없이 설치 마법사만 실행하면 되고, 앱의 `모델 설치` 버튼으로 `gemma4:12b` 모델 다운로드를 진행합니다.
+
 자세한 내용은 [패키징 문서](./docs/packaging.md)를 참고하세요.
 
 ## 문서
