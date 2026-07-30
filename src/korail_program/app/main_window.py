@@ -25,16 +25,13 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QTableWidget,
-    QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from korail_program.app.icons import ICON_ERROR, ICON_MUTED, ICON_SUCCESS, ICON_WARNING
-from korail_program.app.icons import icon_label, material_icon
+from korail_program.app.icons import ICON_ERROR, material_icon
 from korail_program.app.theme import APP_STYLESHEET, STATUS_COLORS
-from korail_program.core.timecode import format_timecode
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 
@@ -96,7 +93,6 @@ class QueueCard(QWidget):
         layout.setSpacing(6)
 
         top = QHBoxLayout()
-        top.addWidget(icon_label("video-outline", color=ICON_MUTED, size=18))
         name = QLabel(self.queue_file.display_name)
         name.setStyleSheet("font-weight: 700;")
         name.setWordWrap(True)
@@ -117,6 +113,65 @@ class QueueCard(QWidget):
     def set_status(self, status: str, tone: str) -> None:
         self.status_chip.setText(status)
         self.status_chip.set_tone(tone)
+
+
+class AnalysisStatusCard(QWidget):
+    def __init__(self, queue_file: QueueFile) -> None:
+        super().__init__()
+        self.queue_file = queue_file
+        self.status_chip = StatusChip("대기", "neutral")
+        self.stage_label = QLabel("분석 대기")
+        self.stage_label.setObjectName("Muted")
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        frame = QFrame()
+        frame.setObjectName("StatusRow")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        top = QHBoxLayout()
+        title = QLabel(self.queue_file.display_name)
+        title.setStyleSheet("font-weight: 700;")
+        title.setWordWrap(True)
+        top.addWidget(title, stretch=1)
+        top.addWidget(self.status_chip)
+
+        meta = QHBoxLayout()
+        meta.addWidget(self.stage_label, stretch=1)
+        size_label = QLabel(self.queue_file.size_label)
+        size_label.setObjectName("Tiny")
+        meta.addWidget(size_label)
+
+        layout.addLayout(top)
+        layout.addLayout(meta)
+        layout.addWidget(self.progress)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(frame)
+
+    def set_state(self, status: str, tone: str, stage: str, progress: int) -> None:
+        self.status_chip.setText(status)
+        self.status_chip.set_tone(tone)
+        self.stage_label.setText(stage)
+        self.progress.setValue(max(0, min(100, progress)))
+
+
+class EmptyState(QWidget):
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 24, 12, 24)
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setObjectName("Muted")
+        label.setWordWrap(True)
+        layout.addWidget(label)
 
 
 class DropQueueList(QListWidget):
@@ -155,6 +210,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._queued_files: dict[Path, QueueFile] = {}
         self._queue_cards: dict[Path, QueueCard] = {}
+        self._analysis_cards: dict[Path, AnalysisStatusCard] = {}
+        self._analysis_empty_item: QListWidgetItem | None = None
         self.setWindowTitle("전차선로 지장수목 분석")
         self.resize(1360, 860)
         self.setMinimumSize(1120, 720)
@@ -236,7 +293,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         action_row = QHBoxLayout()
-        title = QLabel("작업 흐름")
+        title = QLabel("분석 작업")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
         self.model_chip = StatusChip("Gemma 필요", "warning")
@@ -256,17 +313,17 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.export_button)
 
-        timeline_header = QHBoxLayout()
-        timeline_title = QLabel("타임라인")
-        timeline_title.setObjectName("SectionTitle")
+        status_header = QHBoxLayout()
+        status_title = QLabel("분석 상태")
+        status_title.setObjectName("SectionTitle")
         self.session_chip = StatusChip("대기 중", "neutral")
-        timeline_header.addWidget(timeline_title)
-        timeline_header.addStretch(1)
-        timeline_header.addWidget(self.session_chip)
-        self.timeline_list = QListWidget()
-        self.timeline_list.setObjectName("TimelineList")
-        self.timeline_list.setFrameShape(QFrame.Shape.NoFrame)
-        self.timeline_list.setSpacing(6)
+        status_header.addWidget(status_title)
+        status_header.addStretch(1)
+        status_header.addWidget(self.session_chip)
+        self.analysis_list = QListWidget()
+        self.analysis_list.setObjectName("AnalysisList")
+        self.analysis_list.setFrameShape(QFrame.Shape.NoFrame)
+        self.analysis_list.setSpacing(8)
 
         result_header = QHBoxLayout()
         result_title = QLabel("탐지 이벤트")
@@ -295,15 +352,15 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(action_row)
         layout.addWidget(_divider())
-        layout.addLayout(timeline_header)
-        layout.addWidget(self.timeline_list, stretch=2)
+        layout.addLayout(status_header)
+        layout.addWidget(self.analysis_list, stretch=2)
         layout.addWidget(_divider())
         layout.addLayout(result_header)
         layout.addWidget(self.results_table, stretch=3)
         layout.addWidget(_divider())
         layout.addWidget(self.progress)
 
-        self._append_timeline("앱 준비 완료", "neutral", "영상 파일을 등록하면 분석 작업을 구성할 수 있습니다.")
+        self._show_empty_analysis_state()
         return panel
 
     def _build_inspector_panel(self) -> QWidget:
@@ -402,31 +459,33 @@ class MainWindow(QMainWindow):
             item.setSizeHint(QSize(260, 86))
             self.queue_list.addItem(item)
             self.queue_list.setItemWidget(item, card)
+            self._add_analysis_status_card(normalized, queue_file)
             added += 1
 
         if added:
-            self._append_timeline("영상 등록", "success", f"{added}개 파일이 대기열에 추가되었습니다.")
             self._log(f"영상 {added}개 등록")
         if skipped:
-            self._append_timeline("등록 제외", "warning", f"{skipped}개 파일은 중복 또는 미지원 형식입니다.")
             self._log(f"중복 또는 미지원 파일 {skipped}개 제외")
         self._refresh_header()
 
     def clear_queue(self) -> None:
         self._queued_files.clear()
         self._queue_cards.clear()
+        self._analysis_cards.clear()
         self.queue_list.clear()
+        self.analysis_list.clear()
         self.results_table.setRowCount(0)
         self.progress.setValue(0)
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
         self._clear_inspector()
-        self._append_timeline("대기열 초기화", "neutral", "등록된 영상과 임시 결과를 비웠습니다.")
+        self._show_empty_analysis_state()
+        self._log("대기열 초기화")
         self._refresh_header()
 
     def start_analysis(self) -> None:
         if not self._queued_files:
-            self._append_timeline("분석 보류", "warning", "먼저 영상 파일을 등록하세요.")
+            self._log("분석 보류: 영상 파일 없음")
             QMessageBox.warning(self, "영상 없음", "분석할 영상 파일을 먼저 등록하세요.")
             return
 
@@ -438,16 +497,23 @@ class MainWindow(QMainWindow):
 
         for index, (path, queue_file) in enumerate(self._queued_files.items(), start=1):
             card = self._queue_cards[path]
+            analysis_card = self._analysis_cards[path]
             card.set_status("점검", "warning")
-            self._append_timeline(
-                "분석 준비",
-                "neutral",
-                f"{queue_file.display_name}: 파일 확인 완료, 모델/OCR 파이프라인 연결 대기",
+            analysis_card.set_state(
+                "점검",
+                "warning",
+                "파일 확인 완료 · 모델/OCR 파이프라인 연결 대기",
+                20,
             )
-            progress = int(index / total * 100)
+            progress = int(index / total * 35)
             self.progress.setValue(progress)
-            card.set_status("준비 완료", "success")
-            self._add_preflight_result(queue_file)
+            card.set_status("연결 대기", "warning")
+            analysis_card.set_state(
+                "연결 대기",
+                "warning",
+                "Gemma/PaddleOCR 실행 워커 연결 필요",
+                progress,
+            )
 
         self.session_chip.setText("백엔드 연결 대기")
         self.session_chip.set_tone("warning")
@@ -455,13 +521,9 @@ class MainWindow(QMainWindow):
         self.model_chip.set_tone("warning")
         self.ocr_chip.setText("PaddleOCR 연결 필요")
         self.ocr_chip.set_tone("warning")
-        self.event_count_chip.setText(f"{self.results_table.rowCount()}건")
-        self.event_count_chip.set_tone("warning")
-        self._append_timeline(
-            "분석 워커 필요",
-            "warning",
-            "GUI와 대기열은 준비되었습니다. 다음 단계에서 Gemma/PaddleOCR 실행 워커를 연결합니다.",
-        )
+        self.event_count_chip.setText("0건")
+        self.event_count_chip.set_tone("neutral")
+        self._log("분석 워커 연결 대기: Gemma/PaddleOCR 실행 단계 필요")
 
     def export_report(self) -> None:
         if self.results_table.rowCount() == 0:
@@ -474,52 +536,29 @@ class MainWindow(QMainWindow):
             "Excel Workbook (*.xlsx);;PDF (*.pdf)",
         )
         if target:
-            self._append_timeline("리포트 대기", "warning", f"리포트 엔진 연결 후 저장 예정: {target}")
+            self._log(f"리포트 엔진 연결 후 저장 예정: {target}")
 
-    def _add_preflight_result(self, queue_file: QueueFile) -> None:
-        row = self.results_table.rowCount()
-        self.results_table.insertRow(row)
-        values = [
-            ("대기", "warning"),
-            ("-", "neutral"),
-            ("구간 미확인", "neutral"),
-            f"{format_timecode(0)} - {format_timecode(0)}",
-            "모델/OCR 연결 후 실제 지장수목 이벤트가 표시됩니다.",
-            "미확인",
-        ]
-        status_text, status_tone = values[0]
-        risk_text, risk_tone = values[1]
-        self.results_table.setCellWidget(row, 0, StatusChip(status_text, status_tone))
-        self.results_table.setCellWidget(row, 1, StatusChip(risk_text, risk_tone))
-        for column, value in enumerate(values[2:], start=2):
-            item = QTableWidgetItem(value)
-            if column == 4:
-                item.setData(Qt.ItemDataRole.UserRole, queue_file.display_name)
-            self.results_table.setItem(row, column, item)
+    def _show_empty_analysis_state(self) -> None:
+        self.analysis_list.clear()
+        self._analysis_empty_item = QListWidgetItem()
+        empty = EmptyState("영상이 추가되면 파일별 분석 단계와 진행률이 여기에 표시됩니다.")
+        self._analysis_empty_item.setSizeHint(QSize(420, 96))
+        self.analysis_list.addItem(self._analysis_empty_item)
+        self.analysis_list.setItemWidget(self._analysis_empty_item, empty)
 
-    def _append_timeline(self, title: str, tone: str, body: str) -> None:
+    def _add_analysis_status_card(self, path: Path, queue_file: QueueFile) -> None:
+        if self._analysis_empty_item is not None:
+            row = self.analysis_list.row(self._analysis_empty_item)
+            self.analysis_list.takeItem(row)
+            self._analysis_empty_item = None
+
+        card = AnalysisStatusCard(queue_file)
         item = QListWidgetItem()
-        bubble = QFrame()
-        bubble.setObjectName("Bubble")
-        layout = QVBoxLayout(bubble)
-        layout.setContentsMargins(12, 9, 12, 9)
-        layout.setSpacing(4)
-        top = QHBoxLayout()
-        top.addWidget(icon_label(tone_icon(tone), color=tone_icon_color(tone), size=18))
-        title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: 700;")
-        top.addWidget(title_label)
-        top.addStretch(1)
-        top.addWidget(StatusChip(tone_label(tone), tone))
-        body_label = QLabel(body)
-        body_label.setWordWrap(True)
-        body_label.setObjectName("Muted")
-        layout.addLayout(top)
-        layout.addWidget(body_label)
-        item.setSizeHint(QSize(420, 72))
-        self.timeline_list.addItem(item)
-        self.timeline_list.setItemWidget(item, bubble)
-        self.timeline_list.scrollToBottom()
+        item.setData(Qt.ItemDataRole.UserRole, str(path))
+        item.setSizeHint(QSize(420, 106))
+        self.analysis_list.addItem(item)
+        self.analysis_list.setItemWidget(item, card)
+        self._analysis_cards[path] = card
 
     def _update_inspector_from_result(self) -> None:
         selected = self.results_table.selectedItems()
@@ -589,30 +628,3 @@ def _divider() -> QFrame:
     line.setObjectName("Divider")
     line.setFrameShape(QFrame.Shape.NoFrame)
     return line
-
-
-def tone_label(tone: str) -> str:
-    return {
-        "success": "정상",
-        "warning": "주의",
-        "error": "오류",
-        "neutral": "상태",
-    }.get(tone, "상태")
-
-
-def tone_icon(tone: str) -> str:
-    return {
-        "success": "check-circle-outline",
-        "warning": "alert-outline",
-        "error": "alert-circle-outline",
-        "neutral": "information-outline",
-    }.get(tone, "information-outline")
-
-
-def tone_icon_color(tone: str) -> str:
-    return {
-        "success": ICON_SUCCESS,
-        "warning": ICON_WARNING,
-        "error": ICON_ERROR,
-        "neutral": ICON_MUTED,
-    }.get(tone, ICON_MUTED)

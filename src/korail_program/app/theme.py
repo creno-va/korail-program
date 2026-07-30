@@ -4,13 +4,13 @@ from __future__ import annotations
 
 APP_STYLESHEET = """
 * {
-    font-family: "Pretendard GOV Variable", "Pretendard GOV", "Pretendard Variable", "Pretendard", "Malgun Gothic", "Segoe UI", sans-serif;
+    font-family: "Pretendard GOV", "Pretendard", "Malgun Gothic", "Segoe UI", sans-serif;
     font-size: 13px;
-    color: #1d1d1f;
+    color: #202124;
 }
 
 QMainWindow, QWidget {
-    background: #f4f5f7;
+    background: #f7f7f8;
 }
 
 QLabel {
@@ -25,33 +25,32 @@ QFrame#Inspector {
 }
 
 QFrame#LeftRail {
-    background: #eaecf0;
+    background: #f7f7f8;
     border: none;
 }
 
-QFrame#Timeline,
 QFrame#MetricCard,
 QLabel#Panel {
-    background: #f4f5f7;
+    background: #f7f7f8;
     border: none;
     border-radius: 8px;
 }
 
 QFrame#Divider {
-    background: #d8dde5;
+    background: #e6e7eb;
     border: none;
     min-height: 1px;
     max-height: 1px;
 }
 
 QFrame#QueueCard {
-    background: #f8f9fb;
+    background: #ffffff;
     border: none;
     border-radius: 8px;
 }
 
-QFrame#Bubble {
-    background: #f8f9fb;
+QFrame#StatusRow {
+    background: #ffffff;
     border: none;
     border-radius: 8px;
 }
@@ -62,21 +61,21 @@ QLabel#Title {
 }
 
 QLabel#SectionTitle {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
 }
 
 QLabel#Muted {
-    color: #6b7280;
+    color: #70757a;
 }
 
 QLabel#Tiny {
-    color: #6b7280;
+    color: #70757a;
     font-size: 11px;
 }
 
 QPushButton {
-    background: #eaecf0;
+    background: #f1f2f4;
     border: none;
     border-radius: 6px;
     padding: 8px 12px;
@@ -84,15 +83,15 @@ QPushButton {
 }
 
 QPushButton:hover {
-    background: #dde1e7;
+    background: #e8eaed;
 }
 
 QPushButton:pressed {
-    background: #d2d7df;
+    background: #dfe1e5;
 }
 
 QPushButton:disabled {
-    background: #e5e7eb;
+    background: #f1f2f4;
     color: #9a9a9a;
 }
 
@@ -102,12 +101,12 @@ QPushButton#DangerButton {
 }
 
 QPushButton#MainActionButton {
-    background: #e1e6ee;
+    background: #e8eaed;
     min-height: 36px;
 }
 
 QToolButton#IconButton {
-    background: #eaecf0;
+    background: #f1f2f4;
     border: none;
     border-radius: 6px;
     min-width: 40px;
@@ -115,7 +114,7 @@ QToolButton#IconButton {
 }
 
 QToolButton#IconButton:hover {
-    background: #dde1e7;
+    background: #e8eaed;
 }
 
 QMenu {
@@ -130,19 +129,19 @@ QMenu::item {
 }
 
 QMenu::item:selected {
-    background: #f4f5f7;
+    background: #f1f2f4;
 }
 
 QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
-    background: #f4f5f7;
+    background: #f7f7f8;
     border: none;
     border-radius: 6px;
-    selection-background-color: #e1e6ee;
-    selection-color: #1d1d1f;
+    selection-background-color: #e8eaed;
+    selection-color: #202124;
 }
 
 QListWidget#QueueList,
-QListWidget#TimelineList {
+QListWidget#AnalysisList {
     background: transparent;
 }
 
@@ -150,8 +149,17 @@ QListWidget::item {
     padding: 4px;
 }
 
+QListWidget::item:selected,
+QListWidget::item:hover {
+    background: transparent;
+}
+
+QListWidget::item:focus {
+    outline: none;
+}
+
 QHeaderView::section {
-    background: #eaecf0;
+    background: #f1f2f4;
     border: none;
     padding: 8px;
     font-weight: 700;
@@ -161,13 +169,13 @@ QTableWidget {
     background: #ffffff;
     border: none;
     border-radius: 6px;
-    gridline-color: #ededed;
-    selection-background-color: #e1e6ee;
-    selection-color: #1d1d1f;
+    gridline-color: #eef0f2;
+    selection-background-color: #e8eaed;
+    selection-color: #202124;
 }
 
 QProgressBar {
-    background: #eaecf0;
+    background: #f1f2f4;
     border: none;
     border-radius: 6px;
     text-align: center;
@@ -175,7 +183,7 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background: #5f6673;
+    background: #c4c7cc;
     border-radius: 5px;
 }
 
@@ -184,7 +192,7 @@ QTabWidget::pane {
 }
 
 QTabBar::tab {
-    background: #eaecf0;
+    background: #f1f2f4;
     border: none;
     padding: 8px 14px;
     border-top-left-radius: 6px;
@@ -198,7 +206,7 @@ QTabBar::tab:selected {
 
 
 STATUS_COLORS = {
-    "neutral": ("#e5e7eb", "#4b5563", "#e5e7eb"),
+    "neutral": ("#f1f2f4", "#5f6368", "#f1f2f4"),
     "success": ("#dff3e8", "#0f5132", "#dff3e8"),
     "warning": ("#fff0cc", "#7a4f00", "#fff0cc"),
     "error": ("#f8d7da", "#842029", "#f8d7da"),

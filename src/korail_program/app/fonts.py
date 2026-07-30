@@ -8,9 +8,7 @@ from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 FONT_FAMILIES = [
-    "Pretendard GOV Variable",
     "Pretendard GOV",
-    "Pretendard Variable",
     "Pretendard",
     "Malgun Gothic",
     "Segoe UI",
@@ -23,14 +21,18 @@ def configure_app_font(app: QApplication) -> None:
     _load_bundled_pretendard_gov()
     for family in FONT_FAMILIES:
         if family in QFontDatabase.families():
-            app.setFont(QFont(family, 10))
+            app.setFont(QFont(family, 9))
             return
-    app.setFont(QFont("Malgun Gothic", 10))
+    app.setFont(QFont("Malgun Gothic", 9))
 
 
 def _load_bundled_pretendard_gov() -> None:
-    font_resource = resources.files("korail_program.assets.fonts").joinpath(
-        "PretendardGOVVariable.ttf"
-    )
-    with resources.as_file(font_resource) as font_path:
-        QFontDatabase.addApplicationFont(str(font_path))
+    for file_name in [
+        "PretendardGOV-Regular.ttf",
+        "PretendardGOV-Medium.ttf",
+        "PretendardGOV-SemiBold.ttf",
+        "PretendardGOV-Bold.ttf",
+    ]:
+        font_resource = resources.files("korail_program.assets.fonts").joinpath(file_name)
+        with resources.as_file(font_resource) as font_path:
+            QFontDatabase.addApplicationFont(str(font_path))
