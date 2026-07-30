@@ -20,7 +20,7 @@ PyPy는 사용하지 않습니다.
 
 ## 개발 설치 및 실행
 
-아래 절차는 소스 체크아웃에서 개발자가 실행할 때만 필요합니다. Windows 납품판 사용자는 Python이나 venv를 설치하지 않고 설치 마법사와 앱 내 `모델 설치` 버튼만 사용합니다.
+아래 절차는 소스 체크아웃에서 개발자가 실행할 때만 필요합니다. 납품판 사용자는 Python이나 venv를 설치하지 않고 설치 마법사와 앱 내 `모델 설정`만 사용합니다.
 
 ### Windows
 
@@ -56,6 +56,8 @@ macOS에서 `python3`가 3.11 미만이면 Homebrew 또는 pyenv로 Python 3.11 
 | `scripts/test.sh` | macOS/Linux | unittest 실행 |
 | `scripts/install_windows.ps1` | Windows | Python 앱 설치, FFmpeg/Ollama 설치 시도, 기본 Qwen VL 모델 pull |
 | `scripts/install_macos.sh` | macOS | Python 앱 설치, FFmpeg/Ollama 설치 시도, 기본 Qwen VL 모델 pull |
+| `scripts/package_windows.ps1` | Windows | PyInstaller 앱 번들과 Inno Setup 설치 마법사 생성 |
+| `scripts/package_macos.sh` | macOS | PyInstaller `.app`, Installer `.pkg`, 배포용 `.dmg` 생성 |
 | `scripts/analyze_root_videos.cmd` | Windows | 루트 영상 배치 분석 |
 | `scripts/analyze_root_videos.ps1` | Windows | PowerShell 루트 영상 배치 분석 |
 | `scripts/analyze_root_videos.sh` | macOS/Linux | 루트 영상 배치 분석 |
@@ -153,15 +155,33 @@ one-folder를 우선하는 이유:
 - 리포트 템플릿
 - 라이선스 고지
 
-## macOS 실행 범위
+## macOS 패키징
 
-현재 macOS 지원은 개발 및 데모 실행 범위입니다.
+macOS 납품 방식:
 
-- `sh scripts/bootstrap.sh`로 동일 소스 설치
-- `sh scripts/run_gui.sh`로 PySide6 GUI 실행
-- macOS notarization, `.dmg`, `.app` 배포는 아직 범위 밖
+- PyInstaller `.app`
+- Apple Installer `.pkg`
+- pkg를 담은 `.dmg`
 
-필요 시 이후 단계에서 PyInstaller `.app` 빌드와 notarization 절차를 별도 문서로 분리합니다.
+포함 산출물:
+
+- 앱 실행 파일
+- Python runtime dependency bundle
+- FFmpeg/FFprobe binary
+- 로컬 Ollama runtime과 `llama-server`
+- 앱 내 모델 설정으로 내려받는 Qwen VL 모델 파일
+- 기본 설정 파일
+- 리포트 템플릿
+
+로컬 빌드:
+
+```sh
+sh scripts/package_macos.sh
+```
+
+GitHub Release용 macOS 자산은 `.github/workflows/release-macos.yml`의 `Build macOS installer` workflow로 생성합니다. workflow는 arm64와 Intel 빌드를 각각 만들고, 요청한 릴리즈 태그에 pkg/dmg asset을 업로드합니다.
+
+서명/공증은 납품 계정이 준비되면 `KORAIL_CODESIGN_IDENTITY`, `KORAIL_INSTALLER_SIGN_IDENTITY`를 빌드 환경에 주입해 진행합니다. 현재 기본 workflow는 unsigned 검수용 패키지를 생성합니다.
 
 ## 오프라인 요구사항
 

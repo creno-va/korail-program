@@ -4,7 +4,7 @@
 
 ## 현재 방향
 
-- 납품 형태: Windows 오프라인 설치형 프로그램
+- 납품 형태: Windows/macOS 오프라인 설치형 프로그램
 - 개발 실행: Windows와 macOS 모두 지원
 - 개발 언어: Python 3.11+ CPython
 - GUI: PySide6, Qt Widgets

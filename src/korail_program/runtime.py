@@ -21,6 +21,8 @@ def user_data_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
     if base:
         return Path(base) / "KorailAnalyzer"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "KorailAnalyzer"
     return Path.home() / ".korail_analyzer"
 
 
@@ -29,11 +31,11 @@ def ollama_models_dir() -> Path:
 
 
 def bundled_ollama_executable() -> Path:
-    return application_root() / "runtime" / "ollama" / "ollama.exe"
+    return _first_existing_path(_bundled_ollama_executable_candidates())
 
 
 def bundled_ollama_server_executable() -> Path:
-    return application_root() / "runtime" / "ollama" / "lib" / "ollama" / "llama-server.exe"
+    return _first_existing_path(_bundled_ollama_server_candidates())
 
 
 def bundled_ollama_runtime_ready() -> bool:
@@ -54,15 +56,22 @@ def resolve_ollama_executable() -> Path | None:
         candidate = Path(local) / "Programs" / "Ollama" / "ollama.exe"
         if candidate.exists():
             return candidate
+    if sys.platform == "darwin":
+        for candidate in (
+            Path("/Applications/Ollama.app/Contents/Resources/ollama"),
+            Path.home() / "Applications" / "Ollama.app" / "Contents" / "Resources" / "ollama",
+        ):
+            if candidate.exists():
+                return candidate
     return None
 
 
 def bundled_ffmpeg_executable() -> Path:
-    return application_root() / "runtime" / "ffmpeg" / "bin" / "ffmpeg.exe"
+    return _first_existing_path(_bundled_ffmpeg_candidates("ffmpeg"))
 
 
 def bundled_ffprobe_executable() -> Path:
-    return application_root() / "runtime" / "ffmpeg" / "bin" / "ffprobe.exe"
+    return _first_existing_path(_bundled_ffmpeg_candidates("ffprobe"))
 
 
 def resolve_ffmpeg_executable() -> Path | str:
@@ -116,3 +125,55 @@ def list_installed_ollama_models(
         if name:
             models.add(name)
     return models
+
+
+def _binary_name(name: str) -> str:
+    return f"{name}.exe" if os.name == "nt" else name
+
+
+def _runtime_root() -> Path:
+    return application_root() / "runtime"
+
+
+def _bundled_ollama_executable_candidates() -> list[Path]:
+    root = _runtime_root() / "ollama"
+    return [
+        root / _binary_name("ollama"),
+        root / "ollama",
+        root / "bin" / _binary_name("ollama"),
+        root / "bin" / "ollama",
+        root / "Ollama.app" / "Contents" / "Resources" / "ollama",
+    ]
+
+
+def _bundled_ollama_server_candidates() -> list[Path]:
+    root = _runtime_root() / "ollama"
+    return [
+        root / "lib" / "ollama" / _binary_name("llama-server"),
+        root / "lib" / "ollama" / "llama-server",
+        root
+        / "Ollama.app"
+        / "Contents"
+        / "Resources"
+        / "lib"
+        / "ollama"
+        / "llama-server",
+    ]
+
+
+def _bundled_ffmpeg_candidates(name: str) -> list[Path]:
+    root = _runtime_root() / "ffmpeg"
+    executable = _binary_name(name)
+    return [
+        root / "bin" / executable,
+        root / "bin" / name,
+        root / executable,
+        root / name,
+    ]
+
+
+def _first_existing_path(candidates: list[Path]) -> Path:
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]

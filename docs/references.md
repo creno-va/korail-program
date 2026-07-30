@@ -7,6 +7,10 @@
 - PyPy compatibility: https://pypy.org/compat.html
 - PyTorch local install: https://pytorch.org/get-started/locally/
 - PyInstaller manual: https://pyinstaller.org/en/stable/
+- PyInstaller spec files and macOS BUNDLE: https://pyinstaller.org/en/latest/spec-files.html
+- Apple macOS package distribution: https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution
+- GitHub-hosted macOS runner labels: https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job
+- Ollama macOS install/runtime paths: https://docs.ollama.com/macos
 
 ## GUI
 

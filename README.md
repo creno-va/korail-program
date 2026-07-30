@@ -2,7 +2,7 @@
 
 전방 주행 영상에서 전차선로 주변 지장수목 후보 구간을 오프라인으로 분석하고, 검수용 캡처와 리포트로 정리하는 데스크톱 프로그램입니다.
 
-Windows 납품판은 Python 개발 환경이 없는 PC에서도 설치 마법사만으로 실행되도록 PyInstaller 앱, Ollama standalone 런타임, FFmpeg/FFprobe를 함께 포함합니다. 사용자는 앱 안의 `모델 설정`에서 권장 모델을 설치한 뒤 바로 분석을 시작합니다.
+Windows/macOS 납품판은 Python 개발 환경이 없는 PC에서도 설치 파일만으로 실행되도록 PyInstaller 앱, Ollama standalone 런타임, FFmpeg/FFprobe를 함께 포함합니다. 사용자는 앱 안의 `모델 설정`에서 권장 모델을 설치한 뒤 바로 분석을 시작합니다.
 
 ## 기술 방향
 
@@ -115,7 +115,7 @@ sh install_macos.sh
 
 릴리즈 설치 스크립트는 최신 릴리즈 소스를 내려받고, 앱 설치, FFmpeg/Ollama 준비, `qwen3-vl:8b` 모델 설치를 순서대로 진행합니다.
 
-## Windows 설치 마법사 빌드
+## 설치 마법사 빌드
 
 Windows 납품용 실행파일과 설치 마법사는 PyInstaller + Inno Setup으로 생성합니다.
 
@@ -127,6 +127,18 @@ Windows 납품용 실행파일과 설치 마법사는 PyInstaller + Inno Setup�
 
 - `dist/KorailAnalyzer/KorailAnalyzer.exe`
 - `dist/installer/KorailAnalyzerSetup-<version>.exe`
+
+macOS 납품용 앱과 설치 마법사는 macOS에서 PyInstaller + `pkgbuild`/`productbuild`로 생성합니다.
+
+```sh
+sh scripts/package_macos.sh
+```
+
+산출물:
+
+- `dist/Korail Analyzer.app`
+- `dist/installer/KorailAnalyzerInstaller-<version>-macos-<arch>.pkg`
+- `dist/installer/KorailAnalyzerInstaller-<version>-macos-<arch>.dmg`
 
 설치 마법사에는 Ollama standalone runtime과 FFmpeg/FFprobe가 포함됩니다. 사용자는 별도 Python/Ollama/FFmpeg 설치 없이 설치 마법사만 실행하면 되고, 앱의 `모델 설정`에서 권장 모델 다운로드를 진행합니다. 역명 OCR도 기본값으로 같은 로컬 VLM을 사용하므로 별도 OCR 패키지 설치가 필요 없습니다.
 
