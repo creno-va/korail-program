@@ -31,9 +31,17 @@ def bundled_ollama_executable() -> Path:
     return application_root() / "runtime" / "ollama" / "ollama.exe"
 
 
+def bundled_ollama_server_executable() -> Path:
+    return application_root() / "runtime" / "ollama" / "lib" / "ollama" / "llama-server.exe"
+
+
+def bundled_ollama_runtime_ready() -> bool:
+    return bundled_ollama_executable().exists() and bundled_ollama_server_executable().exists()
+
+
 def resolve_ollama_executable() -> Path | None:
     bundled = bundled_ollama_executable()
-    if bundled.exists():
+    if bundled_ollama_runtime_ready():
         return bundled
 
     path_value = shutil.which("ollama")

@@ -39,6 +39,8 @@ from korail_program.config import DEFAULT_VISION_MODEL
 from korail_program.core.models import RiskLevel
 from korail_program.core.timecode import format_timecode
 from korail_program.runtime import (
+    bundled_ollama_executable,
+    bundled_ollama_runtime_ready,
     ollama_process_environment,
     resolve_ffmpeg_executable,
     resolve_ffprobe_executable,
@@ -352,12 +354,12 @@ class MainWindow(QMainWindow):
 
         ollama_path = resolve_ollama_executable()
         if ollama_path is None:
-            self.runtime_chip.setText("Ollama 없음")
+            self.runtime_chip.setText(_ollama_runtime_error_label())
             self.runtime_chip.set_tone("error")
             QMessageBox.warning(
                 self,
-                "Ollama 런타임 없음",
-                "설치 파일에 Ollama 런타임이 포함되어 있지 않습니다. 최신 설치 파일로 다시 설치하세요.",
+                "Ollama 런타임 오류",
+                _ollama_runtime_error_message(),
             )
             return
 
@@ -512,12 +514,12 @@ class MainWindow(QMainWindow):
 
         ollama_path = resolve_ollama_executable()
         if ollama_path is None:
-            self.runtime_chip.setText("Ollama 없음")
+            self.runtime_chip.setText(_ollama_runtime_error_label())
             self.runtime_chip.set_tone("error")
             QMessageBox.warning(
                 self,
-                "Ollama 런타임 없음",
-                "설치 파일에 Ollama 런타임이 포함되어 있지 않습니다. 최신 설치 파일로 다시 설치하세요.",
+                "Ollama 런타임 오류",
+                _ollama_runtime_error_message(),
             )
             return
 
@@ -677,7 +679,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_runtime_status(self) -> None:
         if resolve_ollama_executable() is None:
-            self.runtime_chip.setText("Ollama 없음")
+            self.runtime_chip.setText(_ollama_runtime_error_label())
             self.runtime_chip.set_tone("error")
         elif str(resolve_ffmpeg_executable()) == "ffmpeg" or str(resolve_ffprobe_executable()) == "ffprobe":
             self.runtime_chip.setText("FFmpeg 확인 필요")
@@ -724,6 +726,21 @@ def _analysis_stage_message(result: BatchAnalysisResult) -> str:
     if result.event_count:
         return f"리포트 생성 완료 / 이벤트 {result.event_count}건"
     return "리포트 생성 완료 / 기준 위험도 이벤트 없음"
+
+
+def _ollama_runtime_error_label() -> str:
+    if bundled_ollama_executable().exists() and not bundled_ollama_runtime_ready():
+        return "Ollama 손상"
+    return "Ollama 없음"
+
+
+def _ollama_runtime_error_message() -> str:
+    if bundled_ollama_executable().exists() and not bundled_ollama_runtime_ready():
+        return (
+            "설치된 Ollama 런타임에 llama-server 보조 바이너리가 없습니다. "
+            "최신 설치 파일로 다시 설치하세요."
+        )
+    return "설치 파일에 Ollama 런타임이 포함되어 있지 않습니다. 최신 설치 파일로 다시 설치하세요."
 
 
 def _find_capture_for_event(event: dict[str, object], records: list[object]) -> Path | None:

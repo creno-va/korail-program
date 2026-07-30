@@ -8,6 +8,7 @@ Windows 배포는 두 단계로 구성합니다.
 빌드 스크립트는 설치 exe에 다음 런타임도 함께 포함합니다.
 
 - Ollama standalone Windows runtime: `runtime/ollama/ollama.exe`
+- Ollama model runner files: `runtime/ollama/lib/ollama/llama-server.exe`, `libllama*.dll`, CPU/GPU backend libraries
 - FFmpeg/FFprobe: `runtime/ffmpeg/bin/`
 
 앱의 모델 설치 버튼은 설치된 PC의 PATH가 아니라 이 번들 런타임을 우선 사용합니다. 기본 역명 OCR도 `qwen2.5vl:3b` VLM OCR 프롬프트를 사용하므로 별도 OCR 패키지 설치가 필요 없습니다.
