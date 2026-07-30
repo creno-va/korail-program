@@ -3,7 +3,7 @@ set -eu
 
 REPO=${REPO:-creno-va/korail-program}
 VERSION=${VERSION:-latest}
-MODEL=${MODEL:-gemma4:12b}
+MODEL=${MODEL:-qwen3-vl:8b}
 INSTALL_ROOT=${INSTALL_ROOT:-"$HOME/Applications/KorailProgram"}
 PYTHON_BIN=${PYTHON_BIN:-python3}
 

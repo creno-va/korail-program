@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         self._event_capture_paths: dict[int, Path] = {}
         self._last_result: BatchAnalysisResult | None = None
         self._analysis_workers: dict[Path, AnalysisWorker] = {}
-        self._selected_analysis_paths: set[Path] = set()
+        self._pending_analysis_path: Path | None = None
         self._selected_video_path: Path | None = None
         self._last_progress_log_key: tuple[str, str, int, int] | None = None
         self._selected_model = self._load_selected_model()
@@ -220,7 +220,7 @@ class MainWindow(QMainWindow):
         action_buttons = QHBoxLayout()
         self.install_model_button = ActionButton("모델 설정", icon_name="tune")
         self.install_model_button.clicked.connect(self.install_model)
-        self.start_button = ActionButton("선택 항목 분석", icon_name="play-circle-outline")
+        self.start_button = ActionButton("선택 영상 분석", icon_name="play-circle-outline")
         self.start_button.clicked.connect(self.start_analysis)
         self.export_button = ActionButton("리포트 열기", icon_name="file-document-outline")
         self.export_button.clicked.connect(self.export_report)
@@ -241,11 +241,9 @@ class MainWindow(QMainWindow):
         status_header.addWidget(self.session_chip)
 
         self.analysis_list = CardList(
-            "영상을 추가한 뒤 분석할 항목을 선택하세요.",
-            multi_select=True,
+            "영상을 추가한 뒤 하나씩 선택해 분석하세요.",
         )
         self.analysis_list.selection_changed.connect(self._on_analysis_selection_changed)
-        self.analysis_list.selection_set_changed.connect(self._on_analysis_selection_set_changed)
 
         result_header = QHBoxLayout()
         result_title = QLabel("탐지 이벤트")
@@ -428,7 +426,7 @@ class MainWindow(QMainWindow):
         self._event_payloads.clear()
         self._event_capture_paths.clear()
         self._last_result = None
-        self._selected_analysis_paths.clear()
+        self._pending_analysis_path = None
         self._selected_video_path = None
         self.queue_list.clear_cards()
         self.analysis_list.clear_cards()
@@ -463,7 +461,8 @@ class MainWindow(QMainWindow):
         self._queued_files.pop(path, None)
         self._queue_cards.pop(path, None)
         self._analysis_cards.pop(path, None)
-        self._selected_analysis_paths.discard(path)
+        if self._pending_analysis_path == path:
+            self._pending_analysis_path = None
         self.queue_list.remove_card(path)
         self.analysis_list.remove_card(path)
 
@@ -471,12 +470,9 @@ class MainWindow(QMainWindow):
             self._last_result = None
         if self._selected_video_path == path:
             self._selected_video_path = None
-            fallback = next(
-                (candidate for candidate in self._queued_files if candidate in self._selected_analysis_paths),
-                None,
-            )
+            fallback = next(iter(self._queued_files), None)
             if fallback is not None:
-                self._show_video_details(fallback)
+                self.analysis_list.select_key(fallback)
             else:
                 self.events_list.set_empty_text("분석할 영상을 선택하세요.")
                 self.events_list.clear_cards()
@@ -492,12 +488,8 @@ class MainWindow(QMainWindow):
             self._log("분석 보류: 영상 파일 없음")
             QMessageBox.warning(self, "영상 없음", "분석할 영상 파일을 먼저 등록하세요.")
             return
-        targets = [
-            path
-            for path in self._queued_files
-            if path in self._selected_analysis_paths and path not in self._analysis_workers
-        ]
-        if not targets:
+        path = self._selected_video_path
+        if path is None or path not in self._queued_files:
             self._log("분석 보류: 영상별 분석 로그에서 실행할 항목을 선택하세요.")
             QMessageBox.information(
                 self,
@@ -505,17 +497,30 @@ class MainWindow(QMainWindow):
                 "가운데 영상별 분석 로그에서 분석할 영상을 선택하세요.",
             )
             return
-        for path in targets:
-            self._start_video_analysis(path)
+        self._start_video_analysis(path)
 
     def _start_video_analysis(self, path: Path) -> None:
         if path in self._analysis_workers:
             self._log(f"분석이 이미 진행 중입니다: {path.name}")
             return
+        active_path = self._active_analysis_path()
+        if active_path is not None and active_path != path:
+            self._log(f"다른 영상 분석 중: {active_path.name}")
+            QMessageBox.information(
+                self,
+                "분석 진행 중",
+                "로컬 VLM 안정성을 위해 한 번에 한 영상만 분석합니다. "
+                "현재 영상을 완료하거나 중지한 뒤 다음 영상을 시작하세요.",
+            )
+            return
+        if self._pending_analysis_path == path:
+            self._log(f"분석 준비 중입니다: {path.name}")
+            return
         self._selected_video_path = path
         self.analysis_list.select_key(path)
         ollama_path = resolve_ollama_executable()
         if ollama_path is None:
+            self._pending_analysis_path = None
             self.runtime_chip.setText(_ollama_runtime_error_label())
             self.runtime_chip.set_tone("error")
             QMessageBox.warning(
@@ -525,6 +530,8 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self._pending_analysis_path = path
+        self._sync_primary_actions()
         self._ensure_ollama_server(str(ollama_path))
         QTimer.singleShot(
             1600,
@@ -535,11 +542,22 @@ class MainWindow(QMainWindow):
         )
 
     def _start_video_analysis_after_model_check(self, path: Path, ollama_path: str) -> None:
+        if self._pending_analysis_path != path:
+            return
+        active_path = next(iter(self._analysis_workers), None)
+        if active_path is not None and active_path != path:
+            self._pending_analysis_path = None
+            self._restore_analysis_card_action(path)
+            self._sync_primary_actions()
+            return
         installed_models = list_installed_ollama_models(ollama_path)
         if self._selected_model not in installed_models:
+            self._pending_analysis_path = None
+            self._restore_analysis_card_action(path)
             self.model_chip.setText("모델 미설치")
             self.model_chip.set_tone("warning")
             self._log(f"모델 미설치: {self._selected_model}")
+            self._sync_primary_actions()
             QMessageBox.information(
                 self,
                 "모델 미설치",
@@ -584,14 +602,20 @@ class MainWindow(QMainWindow):
         if queue_card is not None:
             queue_card.set_status("대기", "warning")
         if card is not None:
-            card.set_stopping()
+            card.set_preparing()
             card.set_state("대기", "warning", "프레임 추출, VQA Judge, VLM OCR 준비", 10)
         self._sync_primary_actions()
 
     def _start_analysis_worker(self, path: Path) -> None:
         if path in self._analysis_workers:
+            if self._pending_analysis_path == path:
+                self._pending_analysis_path = None
+                self._restore_analysis_card_action(path)
             return
         if path not in self._queued_files:
+            if self._pending_analysis_path == path:
+                self._pending_analysis_path = None
+                self._restore_analysis_card_action(path)
             return
         output_dir = user_data_dir() / "reports" / "analysis" / _safe_report_dir(path)
         config = BatchAnalysisConfig(
@@ -608,6 +632,8 @@ class MainWindow(QMainWindow):
         )
         worker = AnalysisWorker(config)
         self._analysis_workers[path] = worker
+        if self._pending_analysis_path == path:
+            self._pending_analysis_path = None
         worker.log_message.connect(self._log)
         worker.progress_updated.connect(self._handle_analysis_progress)
         worker.succeeded.connect(lambda result, target=path: self._handle_video_succeeded(target, result))
@@ -930,27 +956,10 @@ class MainWindow(QMainWindow):
         self.evidence_panel.set_text(str(event.get("summary", "")))
         self._set_capture_preview(self._event_capture_paths.get(int(key)))
 
-    def _on_analysis_selection_set_changed(self, keys: list[object]) -> None:
-        self._selected_analysis_paths = {
-            Path(str(key)) for key in keys if Path(str(key)) in self._queued_files
-        }
-        self._sync_primary_actions()
-
     def _on_analysis_selection_changed(self, key: object) -> None:
         path = Path(str(key))
-        selected_paths = {Path(str(item)) for item in self.analysis_list.selected_keys()}
-        self._selected_analysis_paths = {
-            selected for selected in selected_paths if selected in self._queued_files
-        }
-        if path in self._selected_analysis_paths:
+        if path in self._queued_files:
             self._show_video_details(path)
-            return
-        fallback = next(
-            (candidate for candidate in self._queued_files if candidate in self._selected_analysis_paths),
-            None,
-        )
-        if fallback is not None:
-            self._show_video_details(fallback)
             return
         self._selected_video_path = None
         self._last_result = None
@@ -1056,25 +1065,55 @@ class MainWindow(QMainWindow):
             self.model_chip.setText(f"{self._selected_model} 선택")
             self.model_chip.set_tone("success" if recommended.tag == self._selected_model else "warning")
 
+    def _active_analysis_path(self) -> Path | None:
+        if self._analysis_workers:
+            return next(iter(self._analysis_workers))
+        return self._pending_analysis_path
+
+    def _restore_analysis_card_action(self, path: Path) -> None:
+        card = self._analysis_cards.get(path)
+        if card is None:
+            return
+        if path in self._analysis_results:
+            card.set_finished()
+            return
+        card.set_idle()
+
     def _sync_primary_actions(self) -> None:
         if not hasattr(self, "start_button"):
             return
-        selected_targets = [
-            path
-            for path in self._queued_files
-            if path in self._selected_analysis_paths and path not in self._analysis_workers
-        ]
-        if selected_targets:
-            self.start_button.setText(
-                f"선택 {len(selected_targets)}개 분석"
-                if len(selected_targets) > 1
-                else "선택 영상 분석"
-            )
+        active_path = self._active_analysis_path()
+        selected_path = (
+            self._selected_video_path if self._selected_video_path in self._queued_files else None
+        )
+
+        if active_path is not None:
+            if active_path == selected_path:
+                if active_path in self._analysis_workers:
+                    self.start_button.setText("분석 중")
+                    self.start_button.setToolTip("영상 카드의 중지 버튼으로 현재 분석을 중지할 수 있습니다.")
+                else:
+                    self.start_button.setText("분석 준비")
+                    self.start_button.setToolTip("Ollama 서버와 모델 설치 상태를 확인하는 중입니다.")
+            else:
+                self.start_button.setText("분석 진행 중")
+                self.start_button.setToolTip("한 번에 한 영상만 분석합니다.")
+            self.start_button.setEnabled(False)
+        elif selected_path is not None:
+            self.start_button.setText("선택 영상 분석")
             self.start_button.setToolTip("선택한 영상 분석 시작")
+            self.start_button.setEnabled(True)
         else:
-            self.start_button.setText("선택 항목 분석")
+            self.start_button.setText("영상 선택 필요")
             self.start_button.setToolTip("영상별 분석 로그에서 항목을 선택하세요.")
-        self.start_button.setEnabled(bool(selected_targets))
+            self.start_button.setEnabled(False)
+
+        disabled_reason = "현재 다른 영상을 분석 중입니다."
+        for path, card in self._analysis_cards.items():
+            if path == self._pending_analysis_path:
+                card.set_preparing()
+            elif path not in self._analysis_workers:
+                card.set_start_available(active_path is None, disabled_reason=disabled_reason)
         self.export_button.setEnabled(self._last_result is not None)
 
     def _log(self, message: str) -> None:

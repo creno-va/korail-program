@@ -297,8 +297,9 @@ class AnalysisStatusCard(QFrame):
         self.stage_label = QLabel("분석 대기")
         self.stage_label.setObjectName("Muted")
         self.progress = ProgressTrack()
+        self._start_tooltip = "이 영상 분석 시작"
         self.run_button = ActionButton("시작", icon_name="play-circle-outline")
-        self.run_button.setToolTip("이 영상 분석 시작")
+        self.run_button.setToolTip(self._start_tooltip)
         self.remove_button = ActionButton("", icon_name="trash-can-outline", compact=True)
         self.remove_button.setToolTip("목록에서 제거")
         self.setObjectName("StatusRow")
@@ -340,11 +341,21 @@ class AnalysisStatusCard(QFrame):
 
     def set_idle(self) -> None:
         self._run_mode = "start"
+        self._start_tooltip = "이 영상 분석 시작"
         self.run_button.setText("시작")
         self.run_button.set_icon("play-circle-outline")
-        self.run_button.setToolTip("이 영상 분석 시작")
+        self.run_button.setToolTip(self._start_tooltip)
         self.run_button.setEnabled(True)
         self.remove_button.setEnabled(True)
+
+    def set_preparing(self) -> None:
+        self._run_mode = "start"
+        self._start_tooltip = "분석 준비 중"
+        self.run_button.setText("준비")
+        self.run_button.set_icon("progress-clock")
+        self.run_button.setToolTip(self._start_tooltip)
+        self.run_button.setEnabled(False)
+        self.remove_button.setEnabled(False)
 
     def set_running(self) -> None:
         self._run_mode = "stop"
@@ -361,11 +372,18 @@ class AnalysisStatusCard(QFrame):
 
     def set_finished(self) -> None:
         self._run_mode = "start"
+        self._start_tooltip = "이 영상 다시 분석"
         self.run_button.setText("다시")
         self.run_button.set_icon("replay")
-        self.run_button.setToolTip("이 영상 다시 분석")
+        self.run_button.setToolTip(self._start_tooltip)
         self.run_button.setEnabled(True)
         self.remove_button.setEnabled(True)
+
+    def set_start_available(self, enabled: bool, *, disabled_reason: str) -> None:
+        if self._run_mode != "start":
+            return
+        self.run_button.setEnabled(enabled)
+        self.run_button.setToolTip(self._start_tooltip if enabled else disabled_reason)
 
     def _run_requested(self) -> None:
         if self._run_mode == "stop":

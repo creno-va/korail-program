@@ -54,8 +54,8 @@ macOS에서 `python3`가 3.11 미만이면 Homebrew 또는 pyenv로 Python 3.11 
 | `scripts/bootstrap.sh` | macOS/Linux | `.venv` 생성 및 editable install |
 | `scripts/run_gui.sh` | macOS/Linux | GUI 실행 |
 | `scripts/test.sh` | macOS/Linux | unittest 실행 |
-| `scripts/install_windows.ps1` | Windows | Python 앱 설치, FFmpeg/Ollama 설치 시도, Gemma 모델 pull |
-| `scripts/install_macos.sh` | macOS | Python 앱 설치, FFmpeg/Ollama 설치 시도, Gemma 모델 pull |
+| `scripts/install_windows.ps1` | Windows | Python 앱 설치, FFmpeg/Ollama 설치 시도, 기본 Qwen VL 모델 pull |
+| `scripts/install_macos.sh` | macOS | Python 앱 설치, FFmpeg/Ollama 설치 시도, 기본 Qwen VL 모델 pull |
 | `scripts/analyze_root_videos.cmd` | Windows | 루트 영상 배치 분석 |
 | `scripts/analyze_root_videos.ps1` | Windows | PowerShell 루트 영상 배치 분석 |
 | `scripts/analyze_root_videos.sh` | macOS/Linux | 루트 영상 배치 분석 |
@@ -92,8 +92,8 @@ korail-program/
 PySide6 GUI
   -> analysis worker
   -> FFmpeg frame extraction
-  -> Gemma multimodal judge
-  -> Gemma VLM station OCR
+  -> Qwen VL multimodal judge
+  -> Qwen VL station OCR
   -> SQLite/report outputs
 ```
 
@@ -103,22 +103,22 @@ PySide6 GUI
 korail-analyzer analyze-videos
   -> 루트 또는 지정 경로 영상 검색
   -> FFmpeg로 N초 간격 프레임 추출
-  -> Ollama Gemma VLM에 이미지 VQA 요청
-  -> Ollama Gemma VLM에 역명 OCR VQA 요청
+  -> Ollama Qwen VL 모델에 이미지 VQA 요청
+  -> Ollama Qwen VL 모델에 역명 OCR VQA 요청
   -> JSON schema 검증
   -> OCR 역명 관측 기반 구간 매핑
   -> 의심 프레임 captures/ 복사
   -> HTML/Markdown/JSON 리포트 생성
 ```
 
-기본 모델은 `qwen2.5vl:3b`입니다. 설치 스크립트와 앱 내 모델 설치 버튼은 모두 이 모델을 기준으로 동작합니다.
+기본 모델은 `qwen3-vl:8b`입니다. 설치 스크립트와 앱 내 모델 설정은 이 모델을 기본값으로 두고, 사양에 따라 `qwen3-vl:4b` 또는 `qwen2.5vl:3b`를 선택할 수 있습니다.
 
 GitHub Release용 standalone 설치 자산:
 
 - `release/install_windows.ps1`
 - `release/install_macos.sh`
 
-이 두 파일은 repo를 미리 clone하지 않아도 최신 릴리즈 소스를 다운로드한 뒤 앱 설치와 `qwen2.5vl:3b` 모델 pull까지 수행합니다.
+이 두 파일은 repo를 미리 clone하지 않아도 최신 릴리즈 소스를 다운로드한 뒤 앱 설치와 `qwen3-vl:8b` 모델 pull까지 수행합니다.
 
 모델 서버 후보:
 
@@ -147,7 +147,7 @@ one-folder를 우선하는 이유:
 - Python runtime dependency bundle
 - FFmpeg binary
 - 로컬 모델 서버 실행 파일
-- 앱 내 모델 설치로 내려받는 Gemma 모델 파일
+- 앱 내 모델 설정으로 내려받는 Qwen VL 모델 파일
 - 기본 설정 파일
 - 역명 사전
 - 리포트 템플릿
@@ -180,7 +180,7 @@ one-folder를 우선하는 이유:
 - 영상 1개 입력
 - FFmpeg 프레임 추출
 - VLM OCR 역명 추론
-- Gemma judge JSON 출력
+- VLM judge JSON 출력
 - CSV/JSON 결과 저장
 
 ### 2단계: 데스크톱 MVP

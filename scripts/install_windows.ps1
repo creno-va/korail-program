@@ -1,5 +1,5 @@
 param(
-    [string]$Model = "qwen2.5vl:3b",
+    [string]$Model = "qwen3-vl:8b",
     [switch]$SkipSystemPackages,
     [switch]$RunGui,
     [switch]$RunRootAnalysis

@@ -1,7 +1,7 @@
 param(
     [string]$Repo = "creno-va/korail-program",
     [string]$Version = "latest",
-    [string]$Model = "gemma4:12b",
+    [string]$Model = "qwen3-vl:8b",
     [string]$InstallRoot = "$env:LOCALAPPDATA\KorailProgram",
     [switch]$SkipSystemPackages
 )
