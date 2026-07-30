@@ -118,7 +118,6 @@ def build_markdown_report(
                     f"### {record['video_name']} / {format_timecode(observation.video_time_ms)}",
                     "",
                     f"- 위험도: {observation.risk_level.value}",
-                    f"- 대나무/수목 가능성: {observation.bamboo_likely:.2f}",
                     f"- 근거: {observation.evidence or '-'}",
                     f"- 캡처: `{capture}`",
                     "",
@@ -283,8 +282,7 @@ def _frame_card(record: dict[str, object], *, output_dir: Path) -> str:
         f'<img src="{image_src}" alt="candidate frame">'
         f"<h3>{escape(str(record['video_name']))}</h3>"
         f"<p class=\"muted\">{format_timecode(observation.video_time_ms)}</p>"
-        f"<p>{_risk_chip(observation.risk_level)} "
-        f"가능성 {observation.bamboo_likely:.2f}</p>"
+        f"<p>{_risk_chip(observation.risk_level)}</p>"
         f"<p>{escape(observation.evidence or '-')}</p>"
         "</article>"
     )

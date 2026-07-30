@@ -4,8 +4,10 @@ from __future__ import annotations
 
 JUDGE_SYSTEM_PROMPT = """
 You are an offline railway inspection assistant.
-Judge only what is visible in the image. Avoid flagging ordinary trackside vegetation
-unless it is visually close to the overhead catenary clearance area.
+Judge only what is visible in the image. Do not use green color, background hills,
+distant forest, or mountains as evidence of an obstruction.
+Flag vegetation only when a foreground or midground tree, bamboo, branch, or canopy
+physically intrudes into the overhead catenary clearance area.
 Return JSON only. Do not include markdown or explanation outside the JSON object.
 """.strip()
 
@@ -15,11 +17,16 @@ def build_frame_judge_prompt(*, route_hint: str | None = None) -> str:
     return (
         f"{route_line}"
         "Task: Inspect this forward-facing train cab frame.\n"
-        "Decide whether trees, bamboo, grass, branches, or other vegetation appear close to "
-        "the catenary, overhead wire, messenger wire, or pantograph clearance area.\n"
-        "Do not mark vegetation as risky only because it is visible beside the track, below "
-        "the rail line, on embankments, or far from the overhead wires. Risk requires a clear "
-        "spatial relationship with the overhead line corridor.\n"
+        "Decide whether a specific foreground or midground tree, bamboo stem, branch, or "
+        "canopy intrudes into the catenary, overhead wire, messenger wire, feeder line, "
+        "support bracket, or pantograph clearance area.\n"
+        "Do not raise risk for green pixels alone. Do not mark background mountains, hills, "
+        "distant forest, continuous skyline vegetation, roadside grass, embankment plants, "
+        "or scenery behind the wires as risky merely because perspective places them near "
+        "the overhead line in the image.\n"
+        "Risk requires a local obstructing plant connected to the trackside foreground or "
+        "midground and a clear physical relationship with the overhead line corridor. If you "
+        "cannot point to the offending branch/canopy with a tight bbox, downgrade the risk.\n"
         "Return this JSON schema exactly:\n"
         "{\n"
         '  "has_tree": true | false,\n'
@@ -31,11 +38,19 @@ def build_frame_judge_prompt(*, route_hint: str | None = None) -> str:
         '  "needs_human_review": true | false\n'
         "}\n"
         "Risk guide:\n"
-        "- 높음: vegetation visibly overlaps, touches, crosses, or nearly touches the overhead line.\n"
-        "- 중간: vegetation reaches into the overhead clearance corridor and needs review.\n"
-        "- 낮음: vegetation is visible but not clearly near the overhead line.\n"
-        "- 없음: no obstruction vegetation is visible.\n"
-        "Set near_catenary=false when wires and vegetation are separated by clear empty space.\n"
-        "Set bbox_hint around the vegetation near the line, not around all roadside greenery.\n"
-        "If the perspective is ambiguous, set needs_human_review=true.\n"
+        "- 높음: foreground/midground vegetation overlaps, touches, crosses, or nearly "
+        "touches the overhead line.\n"
+        "- 중간: a nearby branch/canopy enters the overhead clearance corridor, but "
+        "contact is uncertain.\n"
+        "- 낮음: nearby vegetation exists along the route but stays below/aside from "
+        "the overhead corridor.\n"
+        "- 없음: no foreground or midground obstruction vegetation is visible.\n"
+        "Set risk_level to 없음 or 낮음 when the only vegetation is a background mountain, "
+        "far hillside, distant forest, or green scenery separated from the track corridor.\n"
+        "Set near_catenary=false when vegetation is behind the wires, below the line, part of "
+        "a distant landscape, or separated by clear empty space.\n"
+        "Set bbox_hint tightly around only the suspected obstructing branch/canopy. Do not "
+        "box all roadside greenery or a distant mountain/forest background.\n"
+        "If perspective alone makes background greenery look close to a wire, downgrade and "
+        "set needs_human_review=true rather than increasing the risk.\n"
     )
