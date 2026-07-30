@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -142,9 +142,23 @@ class TextPanel(QFrame):
         self.label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.setObjectName("TextPanel")
 
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName("TextPanelScroll")
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        content.setObjectName("TextPanelContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(self.label)
+        content_layout.addStretch(1)
+        self.scroll.setWidget(content)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.addWidget(self.label)
+        layout.addWidget(self.scroll)
 
     def set_text(self, text: str) -> None:
         self._lines = text.splitlines() or [text]
@@ -162,6 +176,11 @@ class TextPanel(QFrame):
 
     def _refresh(self) -> None:
         self.label.setText("\n".join(self._lines))
+        QTimer.singleShot(0, self._scroll_to_bottom)
+
+    def _scroll_to_bottom(self) -> None:
+        bar = self.scroll.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
 
 class _ProgressBarFrame(QFrame):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -21,7 +22,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from korail_program.analysis.batch import BatchAnalysisConfig, BatchAnalysisResult, run_batch_analysis
+from korail_program.analysis.batch import (
+    BatchAnalysisConfig,
+    BatchAnalysisProgress,
+    BatchAnalysisResult,
+    run_batch_analysis,
+)
 from korail_program.app.theme import APP_STYLESHEET
 from korail_program.app.widgets import (
     ActionButton,
@@ -35,7 +41,11 @@ from korail_program.app.widgets import (
     TextPanel,
     horizontal_divider,
 )
-from korail_program.config import DEFAULT_VISION_MODEL
+from korail_program.config import (
+    DEFAULT_ANALYSIS_INTERVAL_SEC,
+    DEFAULT_OCR_INTERVAL_SEC,
+    DEFAULT_VISION_MODEL,
+)
 from korail_program.core.models import RiskLevel
 from korail_program.core.timecode import format_timecode
 from korail_program.runtime import (
@@ -54,6 +64,7 @@ DETAIL_FIELDS = ("영상", "구간", "타임코드", "위험도", "OCR", "검수
 
 class AnalysisWorker(QThread):
     log_message = Signal(str)
+    progress_updated = Signal(object)
     succeeded = Signal(object)
     failed = Signal(str)
 
@@ -64,7 +75,8 @@ class AnalysisWorker(QThread):
     def run(self) -> None:
         try:
             self.log_message.emit("분석 엔진 시작")
-            result = run_batch_analysis(self.config)
+            config = replace(self.config, progress_callback=self.progress_updated.emit)
+            result = run_batch_analysis(config)
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc))
             return
@@ -81,6 +93,7 @@ class MainWindow(QMainWindow):
         self._event_capture_paths: dict[int, Path] = {}
         self._last_result: BatchAnalysisResult | None = None
         self._analysis_worker: AnalysisWorker | None = None
+        self._last_progress_log_key: tuple[str, int, int] | None = None
         self._model_install_process: QProcess | None = None
         self._ollama_server_process: QProcess | None = None
 
@@ -372,6 +385,7 @@ class MainWindow(QMainWindow):
         self._event_payloads.clear()
         self._event_capture_paths.clear()
         self._last_result = None
+        self._last_progress_log_key = None
         self.session_chip.setText("분석 준비")
         self.session_chip.set_tone("warning")
         self.progress.setValue(5)
@@ -394,18 +408,19 @@ class MainWindow(QMainWindow):
         config = BatchAnalysisConfig(
             inputs=list(self._queued_files),
             output_dir=output_dir,
-            interval_s=10.0,
+            interval_s=DEFAULT_ANALYSIS_INTERVAL_SEC,
             model=DEFAULT_VISION_MODEL,
             route_hint=None,
             ffmpeg_path=resolve_ffmpeg_executable(),
             ffprobe_path=resolve_ffprobe_executable(),
             min_report_risk=RiskLevel.MEDIUM,
             ocr_backend="vlm",
-            ocr_interval_s=30.0,
+            ocr_interval_s=DEFAULT_OCR_INTERVAL_SEC,
         )
         worker = AnalysisWorker(config)
         self._analysis_worker = worker
         worker.log_message.connect(self._log)
+        worker.progress_updated.connect(self._handle_analysis_progress)
         worker.succeeded.connect(self._handle_analysis_succeeded)
         worker.failed.connect(self._handle_analysis_failed)
         worker.finished.connect(self._handle_analysis_finished)
@@ -415,15 +430,65 @@ class MainWindow(QMainWindow):
             self._analysis_cards[path].set_state(
                 "분석 중",
                 "warning",
-                f"{DEFAULT_VISION_MODEL} Judge + VLM OCR 실행 중",
-                45,
+                f"{DEFAULT_VISION_MODEL} 고속 스캔 대기",
+                12,
             )
         self.session_chip.setText("분석 중")
         self.session_chip.set_tone("warning")
-        self.progress.setValue(45)
+        self.progress.setValue(12)
         self.progress.set_tone("warning")
-        self._log("배치 분석 시작")
+        self._log(
+            f"배치 분석 시작: VQA {DEFAULT_ANALYSIS_INTERVAL_SEC:g}초 간격, "
+            f"OCR {DEFAULT_OCR_INTERVAL_SEC:g}초 간격"
+        )
         worker.start()
+
+    def _handle_analysis_progress(self, progress: BatchAnalysisProgress) -> None:
+        if not isinstance(progress, BatchAnalysisProgress):
+            return
+
+        self.progress.setValue(progress.percent)
+        self.progress.set_tone("warning")
+        self.session_chip.set_tone("warning")
+
+        if progress.stage == "extracting":
+            self.session_chip.setText("프레임 추출")
+            self._set_progress_card(progress, "프레임 추출 중", 18)
+        elif progress.stage == "judging":
+            total = max(1, progress.total_frame_count)
+            self.session_chip.setText(f"{progress.processed_frame_count}/{total} 프레임")
+            self._set_progress_card(progress, progress.message, _video_card_progress(progress))
+        elif progress.stage == "reporting":
+            self.session_chip.setText("리포트 생성")
+            for path, card in self._analysis_cards.items():
+                self._queue_cards[path].set_status("리포트 생성", "warning")
+                card.set_state("리포트 생성", "warning", progress.message, 96)
+        else:
+            self.session_chip.setText("분석 준비")
+
+        if _should_log_progress(progress, self._last_progress_log_key):
+            self._last_progress_log_key = (
+                progress.stage,
+                progress.video_index,
+                progress.frame_index,
+            )
+            self._log(progress.message)
+
+    def _set_progress_card(
+        self,
+        progress: BatchAnalysisProgress,
+        stage_text: str,
+        percent: int,
+    ) -> None:
+        if progress.video_path is None:
+            return
+        path = progress.video_path.resolve()
+        card = self._analysis_cards.get(path)
+        queue_card = self._queue_cards.get(path)
+        if card is None or queue_card is None:
+            return
+        queue_card.set_status("분석 중", "warning")
+        card.set_state("분석 중", "warning", stage_text, percent)
 
     def _handle_analysis_succeeded(self, result: BatchAnalysisResult) -> None:
         self._last_result = result
@@ -560,20 +625,23 @@ class MainWindow(QMainWindow):
         server.setArguments(["serve"])
         server.setProcessEnvironment(_process_environment())
         server.readyReadStandardOutput.connect(
-            lambda: self._append_process_output(server.readAllStandardOutput())
+            lambda: self._append_process_output(server.readAllStandardOutput(), source="server")
         )
         server.readyReadStandardError.connect(
-            lambda: self._append_process_output(server.readAllStandardError())
+            lambda: self._append_process_output(server.readAllStandardError(), source="server")
         )
         server.start()
         self._log("Ollama 로컬 서버 시작")
 
-    def _append_process_output(self, payload) -> None:
+    def _append_process_output(self, payload, *, source: str = "process") -> None:
         text = bytes(payload).decode("utf-8", errors="replace").strip()
         if not text:
             return
         for line in text.splitlines():
-            self._log(line.strip())
+            cleaned = line.strip()
+            if source == "server" and not _should_show_ollama_server_log(cleaned):
+                continue
+            self._log(cleaned)
 
     def _handle_model_install_error(self, _error) -> None:
         self.install_model_button.setEnabled(True)
@@ -726,6 +794,32 @@ def _analysis_stage_message(result: BatchAnalysisResult) -> str:
     if result.event_count:
         return f"리포트 생성 완료 / 이벤트 {result.event_count}건"
     return "리포트 생성 완료 / 기준 위험도 이벤트 없음"
+
+
+def _video_card_progress(progress: BatchAnalysisProgress) -> int:
+    if progress.frame_count <= 0:
+        return 25
+    ratio = progress.frame_index / progress.frame_count
+    return max(25, min(95, 20 + int(ratio * 72)))
+
+
+def _should_log_progress(
+    progress: BatchAnalysisProgress,
+    last_key: tuple[str, int, int] | None,
+) -> bool:
+    key = (progress.stage, progress.video_index, progress.frame_index)
+    if key == last_key:
+        return False
+    if progress.stage != "judging":
+        return True
+    if progress.frame_index <= 1 or progress.frame_index == progress.frame_count:
+        return True
+    return progress.frame_index % 5 == 0
+
+
+def _should_show_ollama_server_log(line: str) -> bool:
+    lowered = line.lower()
+    return any(token in lowered for token in ("error", "fatal", "panic"))
 
 
 def _ollama_runtime_error_label() -> str:

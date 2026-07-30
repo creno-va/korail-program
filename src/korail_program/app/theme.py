@@ -138,6 +138,12 @@ QFrame#CardList {
     border: none;
 }
 
+QScrollArea#TextPanelScroll,
+QWidget#TextPanelContent {
+    background: transparent;
+    border: none;
+}
+
 QWidget#CardListContent {
     background: transparent;
 }

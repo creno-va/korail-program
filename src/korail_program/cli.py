@@ -9,7 +9,13 @@ from pathlib import Path
 import sys
 
 from korail_program.analysis.batch import BatchAnalysisConfig, run_batch_analysis
-from korail_program.config import DEFAULT_MAX_FRAME_WIDTH, DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
+from korail_program.config import (
+    DEFAULT_ANALYSIS_INTERVAL_SEC,
+    DEFAULT_MAX_FRAME_WIDTH,
+    DEFAULT_OCR_INTERVAL_SEC,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_VISION_MODEL,
+)
 from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.models import RiskLevel, SectionMapping, to_jsonable
 from korail_program.db.repository import initialize_database
@@ -44,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Video files, directories, or simple glob paths. Defaults to the current directory.",
     )
     analyze.add_argument("--out", type=Path, default=Path("output") / "analysis")
-    analyze.add_argument("--interval-sec", type=float, default=10.0)
+    analyze.add_argument("--interval-sec", type=float, default=DEFAULT_ANALYSIS_INTERVAL_SEC)
     analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL))
     analyze.add_argument("--ollama-url", default=os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_URL))
     analyze.add_argument("--route-hint")
@@ -60,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--ocr-interval-sec",
         type=float,
-        default=float(os.environ.get("KORAIL_OCR_INTERVAL_SEC", "30")),
+        default=float(os.environ.get("KORAIL_OCR_INTERVAL_SEC", str(DEFAULT_OCR_INTERVAL_SEC))),
         help="Sampling interval for station OCR. Use 0 to disable OCR.",
     )
     analyze.add_argument(

@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 import json
+import math
 from pathlib import Path
 import shutil
 
 from korail_program.analysis.report import write_reports
-from korail_program.config import DEFAULT_MAX_FRAME_WIDTH, DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
+from korail_program.config import (
+    DEFAULT_ANALYSIS_INTERVAL_SEC,
+    DEFAULT_MAX_FRAME_WIDTH,
+    DEFAULT_OCR_INTERVAL_SEC,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_VISION_MODEL,
+)
 from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.frame_extractor import FrameExtractionConfig, extract_frames
 from korail_program.core.models import (
@@ -42,7 +50,7 @@ MAX_CONSECUTIVE_JUDGE_FAILURES = 3
 class BatchAnalysisConfig:
     inputs: list[Path]
     output_dir: Path
-    interval_s: float = 10.0
+    interval_s: float = DEFAULT_ANALYSIS_INTERVAL_SEC
     model: str = DEFAULT_VISION_MODEL
     ollama_url: str = DEFAULT_OLLAMA_URL
     route_hint: str | None = None
@@ -52,8 +60,23 @@ class BatchAnalysisConfig:
     min_report_risk: RiskLevel = RiskLevel.MEDIUM
     recursive: bool = False
     ocr_backend: str = "vlm"
-    ocr_interval_s: float | None = 30.0
+    ocr_interval_s: float | None = DEFAULT_OCR_INTERVAL_SEC
     station_dictionary_path: Path | None = None
+    progress_callback: Callable[["BatchAnalysisProgress"], None] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BatchAnalysisProgress:
+    stage: str
+    message: str
+    percent: int
+    video_path: Path | None = None
+    video_index: int = 0
+    video_count: int = 0
+    frame_index: int = 0
+    frame_count: int = 0
+    processed_frame_count: int = 0
+    total_frame_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +106,13 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
     if not videos:
         raise ValueError("No supported video files were found")
 
+    _emit_progress(
+        config,
+        stage="preparing",
+        message="분석 대상 확인 중",
+        percent=3,
+        video_count=len(videos),
+    )
     output_dir = _resolve_output_dir(config.output_dir)
     frames_root = output_dir / "frames"
     captures_root = output_dir / "captures"
@@ -100,7 +130,15 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
     )
     ocr_every_n_frames = max(1, int(round(ocr_interval_ms / interval_ms)))
     sampled_frame_count = 0
-    metadata_items: list[VideoMetadata] = []
+    metadata_items = [
+        _probe_or_default(video_path, video_id=video_id, config=config)
+        for video_id, video_path in enumerate(videos, start=1)
+    ]
+    estimated_total_frames = max(
+        1,
+        sum(_estimate_sample_count(item.duration_ms, config.interval_s) for item in metadata_items),
+    )
+    processed_frame_count = 0
     records: list[dict[str, object]] = []
     ocr_observations: list[OcrObservation] = []
     failures: list[dict[str, object]] = []
@@ -111,7 +149,17 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         if failure_summary:
             break
         video_key = f"video_{video_id:03d}"
-        metadata_items.append(_probe_or_default(video_path, video_id=video_id, config=config))
+        _emit_progress(
+            config,
+            stage="extracting",
+            message=f"{video_path.name}: 프레임 추출 중",
+            percent=_analysis_percent(processed_frame_count, estimated_total_frames),
+            video_path=video_path,
+            video_index=video_id,
+            video_count=len(videos),
+            processed_frame_count=processed_frame_count,
+            total_frame_count=estimated_total_frames,
+        )
         frame_dir = frames_root / video_key
         frames = extract_frames(
             FrameExtractionConfig(
@@ -124,11 +172,25 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
             ffmpeg_path=config.ffmpeg_path,
         )
         sampled_frame_count += len(frames)
+        estimated_total_frames = max(estimated_total_frames, processed_frame_count + len(frames))
 
         for frame_index, frame_path in enumerate(frames, start=1):
             if failure_summary:
                 break
             video_time_ms = (frame_index - 1) * interval_ms
+            _emit_progress(
+                config,
+                stage="judging",
+                message=_frame_progress_message(video_path, frame_index, len(frames)),
+                percent=_analysis_percent(processed_frame_count, estimated_total_frames),
+                video_path=video_path,
+                video_index=video_id,
+                video_count=len(videos),
+                frame_index=frame_index,
+                frame_count=len(frames),
+                processed_frame_count=processed_frame_count,
+                total_frame_count=estimated_total_frames,
+            )
             if ocr_engine is not None and _should_run_ocr(frame_index, ocr_every_n_frames):
                 try:
                     ocr_observation = _read_station_observation(
@@ -185,7 +247,35 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                             "error": failure_summary,
                         }
                     )
+                    processed_frame_count += 1
+                    _emit_progress(
+                        config,
+                        stage="judging",
+                        message=_frame_progress_message(video_path, frame_index, len(frames)),
+                        percent=_analysis_percent(processed_frame_count, estimated_total_frames),
+                        video_path=video_path,
+                        video_index=video_id,
+                        video_count=len(videos),
+                        frame_index=frame_index,
+                        frame_count=len(frames),
+                        processed_frame_count=processed_frame_count,
+                        total_frame_count=estimated_total_frames,
+                    )
                     break
+                processed_frame_count += 1
+                _emit_progress(
+                    config,
+                    stage="judging",
+                    message=_frame_progress_message(video_path, frame_index, len(frames)),
+                    percent=_analysis_percent(processed_frame_count, estimated_total_frames),
+                    video_path=video_path,
+                    video_index=video_id,
+                    video_count=len(videos),
+                    frame_index=frame_index,
+                    frame_count=len(frames),
+                    processed_frame_count=processed_frame_count,
+                    total_frame_count=estimated_total_frames,
+                )
                 continue
             consecutive_judge_failures = 0
 
@@ -208,6 +298,20 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     "observation": observation,
                     "raw_response": raw_response,
                 }
+            )
+            processed_frame_count += 1
+            _emit_progress(
+                config,
+                stage="judging",
+                message=_frame_progress_message(video_path, frame_index, len(frames)),
+                percent=_analysis_percent(processed_frame_count, estimated_total_frames),
+                video_path=video_path,
+                video_index=video_id,
+                video_count=len(videos),
+                frame_index=frame_index,
+                frame_count=len(frames),
+                processed_frame_count=processed_frame_count,
+                total_frame_count=estimated_total_frames,
             )
 
     if failure_summary is None and sampled_frame_count and not records:
@@ -237,6 +341,16 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         min_event_duration_ms=interval_ms,
     )
     events = _attach_capture_counts(events, suspicious_records)
+
+    _emit_progress(
+        config,
+        stage="reporting",
+        message="리포트 생성 중",
+        percent=96,
+        video_count=len(videos),
+        processed_frame_count=processed_frame_count,
+        total_frame_count=estimated_total_frames,
+    )
 
     observations_json = output_dir / "observations.json"
     events_json = output_dir / "events.json"
@@ -311,6 +425,52 @@ def discover_video_files(inputs: list[Path], *, recursive: bool = False) -> list
 def _error_text(exc: Exception) -> str:
     text = str(exc).strip()
     return text or exc.__class__.__name__
+
+
+def _emit_progress(
+    config: BatchAnalysisConfig,
+    *,
+    stage: str,
+    message: str,
+    percent: int,
+    video_path: Path | None = None,
+    video_index: int = 0,
+    video_count: int = 0,
+    frame_index: int = 0,
+    frame_count: int = 0,
+    processed_frame_count: int = 0,
+    total_frame_count: int = 0,
+) -> None:
+    if config.progress_callback is None:
+        return
+    config.progress_callback(
+        BatchAnalysisProgress(
+            stage=stage,
+            message=message,
+            percent=max(0, min(100, percent)),
+            video_path=video_path,
+            video_index=video_index,
+            video_count=video_count,
+            frame_index=frame_index,
+            frame_count=frame_count,
+            processed_frame_count=processed_frame_count,
+            total_frame_count=total_frame_count,
+        )
+    )
+
+
+def _estimate_sample_count(duration_ms: int, interval_s: float) -> int:
+    if duration_ms <= 0:
+        return 1
+    return max(1, math.ceil((duration_ms / 1000) / interval_s))
+
+
+def _analysis_percent(processed_frame_count: int, total_frame_count: int) -> int:
+    return min(94, 8 + int((processed_frame_count / max(1, total_frame_count)) * 86))
+
+
+def _frame_progress_message(video_path: Path, frame_index: int, frame_count: int) -> str:
+    return f"{video_path.name}: Judge {frame_index}/{max(1, frame_count)}"
 
 
 def _is_model_failure(exc: Exception) -> bool:
