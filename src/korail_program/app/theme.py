@@ -40,6 +40,13 @@ QFrame#EmptyState {
     border-radius: 8px;
 }
 
+QFrame#WorkflowCard,
+QFrame#ModelCard {
+    background: #f0f2f5;
+    border: none;
+    border-radius: 8px;
+}
+
 QFrame#Divider {
     background: #dfe3e8;
     border: none;
@@ -53,6 +60,10 @@ QFrame#EventCard {
     background: #ffffff;
     border: none;
     border-radius: 8px;
+}
+
+QDialog {
+    background: #f5f6f8;
 }
 
 QFrame#SelectableCard {

@@ -273,6 +273,9 @@ class QueueCard(QFrame):
 
 
 class AnalysisStatusCard(QFrame):
+    start_requested = Signal()
+    stop_requested = Signal()
+
     def __init__(self, queue_file: QueueFile) -> None:
         super().__init__()
         self.queue_file = queue_file
@@ -280,8 +283,13 @@ class AnalysisStatusCard(QFrame):
         self.stage_label = QLabel("분석 대기")
         self.stage_label.setObjectName("Muted")
         self.progress = ProgressTrack()
+        self.start_button = ActionButton("시작", icon_name="play-circle-outline")
+        self.stop_button = ActionButton("중지", icon_name="stop-circle-outline", compact=True)
+        self.start_button.setToolTip("이 영상 분석 시작")
+        self.stop_button.setToolTip("이 영상 분석 중지")
         self.setObjectName("StatusRow")
         self._build_ui()
+        self.set_idle()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -294,6 +302,10 @@ class AnalysisStatusCard(QFrame):
         title.setWordWrap(True)
         top.addWidget(title, stretch=1)
         top.addWidget(self.status_chip)
+        top.addWidget(self.start_button)
+        top.addWidget(self.stop_button)
+        self.start_button.clicked.connect(self.start_requested.emit)
+        self.stop_button.clicked.connect(self.stop_requested.emit)
 
         meta = QHBoxLayout()
         meta.addWidget(self.stage_label, stretch=1)
@@ -310,6 +322,23 @@ class AnalysisStatusCard(QFrame):
         self.status_chip.set_tone(tone)
         self.stage_label.setText(stage)
         self.progress.setValue(progress)
+        self.progress.set_tone(tone)
+
+    def set_idle(self) -> None:
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+
+    def set_running(self) -> None:
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+
+    def set_stopping(self) -> None:
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(False)
+
+    def set_finished(self) -> None:
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
 
 
 class EventCard(QFrame):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-DEFAULT_VISION_MODEL = "qwen2.5vl:3b"
+DEFAULT_VISION_MODEL = "qwen3-vl:8b"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_ANALYSIS_INTERVAL_SEC = 30.0
 DEFAULT_OCR_INTERVAL_SEC = 120.0

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 
@@ -85,3 +86,33 @@ def ollama_process_environment() -> dict[str, str]:
     env.setdefault("OLLAMA_MODELS", str(models_dir))
     env.setdefault("OLLAMA_HOST", "127.0.0.1:11434")
     return env
+
+
+def list_installed_ollama_models(
+    ollama_path: str | Path,
+    *,
+    timeout_s: int = 5,
+) -> set[str]:
+    try:
+        result = subprocess.run(
+            [str(ollama_path), "list"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            env=ollama_process_environment(),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if result.returncode != 0:
+        return set()
+
+    models: set[str] = set()
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.lower().startswith("name "):
+            continue
+        name = stripped.split(maxsplit=1)[0]
+        if name:
+            models.add(name)
+    return models

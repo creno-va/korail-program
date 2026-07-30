@@ -63,6 +63,7 @@ class BatchAnalysisConfig:
     ocr_interval_s: float | None = DEFAULT_OCR_INTERVAL_SEC
     station_dictionary_path: Path | None = None
     progress_callback: Callable[["BatchAnalysisProgress"], None] | None = None
+    cancel_callback: Callable[[], bool] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +95,10 @@ class BatchAnalysisResult:
     ocr_observation_count: int = 0
     aborted: bool = False
     failure_summary: str | None = None
+
+
+class AnalysisCancelled(RuntimeError):
+    """Raised when the user asks to stop analysis before the batch completes."""
 
 
 def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
@@ -146,6 +151,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
     failure_summary: str | None = None
 
     for video_id, video_path in enumerate(videos, start=1):
+        _raise_if_cancelled(config)
         if failure_summary:
             break
         video_key = f"video_{video_id:03d}"
@@ -175,6 +181,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         estimated_total_frames = max(estimated_total_frames, processed_frame_count + len(frames))
 
         for frame_index, frame_path in enumerate(frames, start=1):
+            _raise_if_cancelled(config)
             if failure_summary:
                 break
             video_time_ms = (frame_index - 1) * interval_ms
@@ -193,6 +200,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
             )
             if ocr_engine is not None and _should_run_ocr(frame_index, ocr_every_n_frames):
                 try:
+                    _raise_if_cancelled(config)
                     ocr_observation = _read_station_observation(
                         engine=ocr_engine,
                         matcher=station_matcher,
@@ -216,7 +224,9 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     )
 
             try:
+                _raise_if_cancelled(config)
                 raw_response = client.judge_image(frame_path, route_hint=config.route_hint)
+                _raise_if_cancelled(config)
                 observation = judge_observation_from_text(
                     video_id=video_id,
                     video_time_ms=video_time_ms,
@@ -347,6 +357,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         stage="reporting",
         message="리포트 생성 중",
         percent=96,
+        video_path=videos[0] if len(videos) == 1 else None,
         video_count=len(videos),
         processed_frame_count=processed_frame_count,
         total_frame_count=estimated_total_frames,
@@ -425,6 +436,11 @@ def discover_video_files(inputs: list[Path], *, recursive: bool = False) -> list
 def _error_text(exc: Exception) -> str:
     text = str(exc).strip()
     return text or exc.__class__.__name__
+
+
+def _raise_if_cancelled(config: BatchAnalysisConfig) -> None:
+    if config.cancel_callback is not None and config.cancel_callback():
+        raise AnalysisCancelled("사용자 요청으로 분석을 중지했습니다.")
 
 
 def _emit_progress(
