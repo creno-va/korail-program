@@ -103,7 +103,7 @@ OLLAMA_VENDOR="$MACOS_VENDOR_ROOT/ollama"
 FFMPEG_VENDOR="$MACOS_VENDOR_ROOT/ffmpeg"
 
 test_ollama_runtime() {
-  [ -f "$1/ollama" ] && [ -f "$1/lib/ollama/llama-server" ]
+  [ -f "$1/ollama" ] && { [ -d "$1/lib/ollama" ] || [ -d "$1/lib" ]; }
 }
 
 test_ffmpeg_runtime() {

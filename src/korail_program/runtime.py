@@ -39,7 +39,11 @@ def bundled_ollama_server_executable() -> Path:
 
 
 def bundled_ollama_runtime_ready() -> bool:
-    return bundled_ollama_executable().exists() and bundled_ollama_server_executable().exists()
+    if not bundled_ollama_executable().exists():
+        return False
+    if os.name == "nt":
+        return bundled_ollama_server_executable().exists()
+    return _bundled_ollama_resources_available()
 
 
 def resolve_ollama_executable() -> Path | None:
@@ -159,6 +163,18 @@ def _bundled_ollama_server_candidates() -> list[Path]:
         / "ollama"
         / "llama-server",
     ]
+
+
+def _bundled_ollama_resources_available() -> bool:
+    root = _runtime_root() / "ollama"
+    return any(
+        candidate.exists()
+        for candidate in (
+            root / "lib" / "ollama",
+            root / "lib",
+            root / "Ollama.app" / "Contents" / "Resources",
+        )
+    )
 
 
 def _bundled_ffmpeg_candidates(name: str) -> list[Path]:
