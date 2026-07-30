@@ -183,6 +183,30 @@ QFrame#ProgressTrackChunk {
     border: none;
     border-radius: 4px;
 }
+
+QFrame#ProgressTrackChunk[tone="success"] {
+    background: #2f8f5b;
+}
+
+QFrame#ProgressTrackChunk[tone="warning"] {
+    background: #c68a00;
+}
+
+QFrame#ProgressTrackChunk[tone="error"] {
+    background: #b42318;
+}
+
+QLabel#Tiny[tone="success"] {
+    color: #0f5132;
+}
+
+QLabel#Tiny[tone="warning"] {
+    color: #7a4f00;
+}
+
+QLabel#Tiny[tone="error"] {
+    color: #842029;
+}
 """
 
 

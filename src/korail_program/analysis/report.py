@@ -18,6 +18,7 @@ def write_reports(
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
     ocr_observation_count: int = 0,
+    failure_summary: str | None = None,
 ) -> tuple[Path, Path]:
     markdown_path = output_dir / "report.md"
     html_path = output_dir / "report.html"
@@ -29,6 +30,7 @@ def write_reports(
             suspicious_records=suspicious_records,
             events=events,
             failures=failures,
+            failure_summary=failure_summary,
         )
         + "\n",
         encoding="utf-8",
@@ -42,6 +44,7 @@ def write_reports(
             events=events,
             failures=failures,
             output_dir=output_dir,
+            failure_summary=failure_summary,
         )
         + "\n",
         encoding="utf-8",
@@ -57,6 +60,7 @@ def build_markdown_report(
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
     ocr_observation_count: int = 0,
+    failure_summary: str | None = None,
 ) -> str:
     lines = [
         "# 지장수목 의심 프레임 분석 리포트",
@@ -66,12 +70,24 @@ def build_markdown_report(
         f"- OCR 역명 관측: {ocr_observation_count}개",
         f"- 의심 캡처: {len(suspicious_records)}개",
         f"- 병합 이벤트: {len(events)}건",
-        "",
-        "## 이벤트 요약",
+        f"- 처리 실패: {len(failures)}건",
         "",
     ]
+    if failure_summary:
+        lines.extend(["## 처리 상태", "", failure_summary, ""])
+
+    lines.extend(
+        [
+        "## 이벤트 요약",
+        "",
+        ]
+    )
     if not events:
-        lines.append("의심 이벤트가 없습니다.")
+        lines.append(
+            "모델 호출 실패로 이벤트를 생성하지 못했습니다."
+            if failure_summary
+            else "분석 완료: 기준 위험도에 걸리는 의심 이벤트가 없습니다."
+        )
     else:
         lines.extend(
             [
@@ -112,7 +128,10 @@ def build_markdown_report(
     if failures:
         lines.extend(["", "## 처리 실패", ""])
         for failure in failures:
-            lines.append(f"- {failure['video_name']} / {failure['frame_path']}: {failure['error']}")
+            lines.append(
+                f"- {failure.get('video_name', '-')} / "
+                f"{failure.get('frame_path', '-')}: {failure.get('error', '-')}"
+            )
 
     return "\n".join(lines)
 
@@ -126,21 +145,37 @@ def build_html_report(
     failures: list[dict[str, object]],
     output_dir: Path,
     ocr_observation_count: int = 0,
+    failure_summary: str | None = None,
 ) -> str:
     event_rows = "\n".join(_event_row(event) for event in events)
     if not event_rows:
-        event_rows = '<tr><td colspan="6" class="muted">의심 이벤트가 없습니다.</td></tr>'
+        empty_message = (
+            "모델 호출 실패로 이벤트를 생성하지 못했습니다."
+            if failure_summary
+            else "분석 완료: 기준 위험도에 걸리는 의심 이벤트가 없습니다."
+        )
+        event_rows = f'<tr><td colspan="6" class="muted">{escape(empty_message)}</td></tr>'
 
     cards = "\n".join(_frame_card(record, output_dir=output_dir) for record in suspicious_records)
     if not cards:
         cards = '<p class="muted">의심 프레임이 없습니다.</p>'
 
+    failure_summary_block = ""
+    if failure_summary:
+        failure_summary_block = (
+            '<section class="notice error">'
+            "<h2>처리 상태</h2>"
+            f"<p>{escape(failure_summary)}</p>"
+            "</section>"
+        )
+
     failure_block = ""
     if failures:
         failure_items = "\n".join(
             "<li>"
-            f"{escape(str(item['video_name']))} / {escape(str(item['frame_path']))}: "
-            f"{escape(str(item['error']))}"
+            f"{escape(str(item.get('video_name', '-')))} / "
+            f"{escape(str(item.get('frame_path', '-')))}: "
+            f"{escape(str(item.get('error', '-')))}"
             "</li>"
             for item in failures
         )
@@ -185,18 +220,28 @@ def build_html_report(
     .risk-high {{ background: #f8d7da; color: #842029; }}
     .risk-medium {{ background: #fff0cc; color: #7a4f00; }}
     .risk-low {{ background: #dff3e8; color: #0f5132; }}
+    .notice {{
+      border-radius: 8px;
+      padding: 14px;
+      margin: 0 0 20px;
+      background: #fff0cc;
+      color: #7a4f00;
+    }}
+    .notice.error {{ background: #f8d7da; color: #842029; }}
   </style>
 </head>
 <body>
 <main>
   <h1>지장수목 의심 프레임 분석 리포트</h1>
   <p class="muted">샘플링된 영상 프레임을 로컬 멀티모달 LLM으로 판정한 결과입니다.</p>
+  {failure_summary_block}
   <section class="summary">
     <div class="metric">분석 영상<strong>{video_count}</strong></div>
     <div class="metric">VQA 샘플 프레임<strong>{sampled_frame_count}</strong></div>
     <div class="metric">OCR 역명 관측<strong>{ocr_observation_count}</strong></div>
     <div class="metric">의심 캡처<strong>{len(suspicious_records)}</strong></div>
     <div class="metric">병합 이벤트<strong>{len(events)}</strong></div>
+    <div class="metric">처리 실패<strong>{len(failures)}</strong></div>
   </section>
   <section>
     <h2>이벤트 요약</h2>

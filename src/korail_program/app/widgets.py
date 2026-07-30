@@ -172,10 +172,16 @@ class _ProgressBarFrame(QFrame):
         self.setFixedHeight(8)
         self.chunk = QFrame(self)
         self.chunk.setObjectName("ProgressTrackChunk")
+        self.chunk.setProperty("tone", "neutral")
 
     def set_value(self, value: int) -> None:
         self._value = max(0, min(100, value))
         self._sync_chunk()
+
+    def set_tone(self, tone: str) -> None:
+        self.chunk.setProperty("tone", tone)
+        self.chunk.style().unpolish(self.chunk)
+        self.chunk.style().polish(self.chunk)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -204,6 +210,12 @@ class ProgressTrack(QWidget):
         self._value = max(0, min(100, value))
         self.track.set_value(self._value)
         self.label.setText(f"{self._value}%")
+
+    def set_tone(self, tone: str) -> None:
+        self.track.set_tone(tone)
+        self.label.setProperty("tone", tone)
+        self.label.style().unpolish(self.label)
+        self.label.style().polish(self.label)
 
     def value(self) -> int:
         return self._value
@@ -324,11 +336,14 @@ class EmptyState(QFrame):
         self.setObjectName("EmptyState")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 22, 14, 22)
-        label = QLabel(text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setObjectName("Muted")
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        self.label = QLabel(text)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setObjectName("Muted")
+        self.label.setWordWrap(True)
+        layout.addWidget(self.label)
+
+    def set_text(self, text: str) -> None:
+        self.label.setText(text)
 
 
 class _SelectableCard(QFrame):
@@ -417,6 +432,12 @@ class CardList(QFrame):
         self._remove_empty()
         self._empty = EmptyState(self._empty_text)
         self.content_layout.insertWidget(0, self._empty)
+
+    def set_empty_text(self, text: str) -> None:
+        self._empty_text = text
+        empty = getattr(self, "_empty", None)
+        if empty is not None:
+            empty.set_text(text)
 
     def select_key(self, key: object) -> None:
         if key in self._wrappers:

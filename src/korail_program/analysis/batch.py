@@ -23,7 +23,11 @@ from korail_program.core.models import (
 )
 from korail_program.core.timecode import format_timecode
 from korail_program.core.video_probe import probe_video
-from korail_program.judge.gemma_client import OllamaVisionConfig, OllamaVisionJudgeClient
+from korail_program.judge.gemma_client import (
+    OllamaApiError,
+    OllamaVisionConfig,
+    OllamaVisionJudgeClient,
+)
 from korail_program.judge.schema import judge_observation_from_text
 from korail_program.ocr.paddle_ocr_engine import PaddleOcrEngine
 from korail_program.ocr.station_dictionary import load_station_names
@@ -31,6 +35,7 @@ from korail_program.ocr.station_matcher import StationMatcher
 from korail_program.ocr.vlm_ocr_engine import VlmStationOcrEngine
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
+MAX_CONSECUTIVE_JUDGE_FAILURES = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +69,8 @@ class BatchAnalysisResult:
     event_count: int
     failure_count: int
     ocr_observation_count: int = 0
+    aborted: bool = False
+    failure_summary: str | None = None
 
 
 def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
@@ -97,8 +104,12 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
     records: list[dict[str, object]] = []
     ocr_observations: list[OcrObservation] = []
     failures: list[dict[str, object]] = []
+    consecutive_judge_failures = 0
+    failure_summary: str | None = None
 
     for video_id, video_path in enumerate(videos, start=1):
+        if failure_summary:
+            break
         video_key = f"video_{video_id:03d}"
         metadata_items.append(_probe_or_default(video_path, video_id=video_id, config=config))
         frame_dir = frames_root / video_key
@@ -115,6 +126,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         sampled_frame_count += len(frames)
 
         for frame_index, frame_path in enumerate(frames, start=1):
+            if failure_summary:
+                break
             video_time_ms = (frame_index - 1) * interval_ms
             if ocr_engine is not None and _should_run_ocr(frame_index, ocr_every_n_frames):
                 try:
@@ -136,7 +149,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                             "video_name": video_path.name,
                             "frame_path": str(frame_path),
                             "video_time_ms": video_time_ms,
-                            "error": str(exc),
+                            "error": _error_text(exc),
                         }
                     )
 
@@ -148,6 +161,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     text=raw_response,
                 )
             except Exception as exc:  # noqa: BLE001
+                error_text = _error_text(exc)
                 failures.append(
                     {
                         "video_id": video_id,
@@ -155,10 +169,25 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                         "frame_path": str(frame_path),
                         "video_time_ms": video_time_ms,
                         "stage": "judge",
-                        "error": str(exc),
+                        "error": error_text,
                     }
                 )
+                consecutive_judge_failures += 1
+                if _is_model_failure(exc) and consecutive_judge_failures >= MAX_CONSECUTIVE_JUDGE_FAILURES:
+                    failure_summary = _model_failure_summary(error_text)
+                    failures.append(
+                        {
+                            "stage": "system",
+                            "video_id": video_id,
+                            "video_name": video_path.name,
+                            "frame_path": str(frame_path),
+                            "video_time_ms": video_time_ms,
+                            "error": failure_summary,
+                        }
+                    )
+                    break
                 continue
+            consecutive_judge_failures = 0
 
             capture_path = _copy_capture_if_needed(
                 frame_path=frame_path,
@@ -180,6 +209,14 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     "raw_response": raw_response,
                 }
             )
+
+    if failure_summary is None and sampled_frame_count and not records:
+        judge_failure = next(
+            (failure for failure in failures if failure.get("stage") == "judge"),
+            None,
+        )
+        if judge_failure is not None:
+            failure_summary = _model_failure_summary(str(judge_failure.get("error", "")))
 
     suspicious_records = [record for record in records if record.get("capture_path")]
     suspicious_observations = [
@@ -212,6 +249,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                 "sections": [to_jsonable(item) for item in sections],
                 "records": [_record_payload(record) for record in records],
                 "failures": failures,
+                "failure_summary": failure_summary,
+                "aborted": failure_summary is not None and not records,
             },
             ensure_ascii=False,
             indent=2,
@@ -231,6 +270,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         suspicious_records=suspicious_records,
         events=events,
         failures=failures,
+        failure_summary=failure_summary,
     )
 
     return BatchAnalysisResult(
@@ -245,6 +285,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         event_count=len(events),
         failure_count=len(failures),
         ocr_observation_count=len(ocr_observations),
+        aborted=failure_summary is not None and not records,
+        failure_summary=failure_summary,
     )
 
 
@@ -264,6 +306,28 @@ def discover_video_files(inputs: list[Path], *, recursive: bool = False) -> list
             videos.extend(path for path in candidate.glob(pattern) if _is_video(path))
 
     return sorted({path.resolve() for path in videos})
+
+
+def _error_text(exc: Exception) -> str:
+    text = str(exc).strip()
+    return text or exc.__class__.__name__
+
+
+def _is_model_failure(exc: Exception) -> bool:
+    return isinstance(exc, OllamaApiError)
+
+
+def _model_failure_summary(error_text: str) -> str:
+    if not error_text:
+        return "로컬 모델 호출이 반복 실패했습니다. 모델 설치 상태와 PC 메모리를 확인하세요."
+    lowered = error_text.lower()
+    if "memory" in lowered or "ram" in lowered or "vram" in lowered:
+        return f"로컬 모델 메모리 부족으로 분석을 중단했습니다: {error_text}"
+    if "not found" in lowered or "pull model" in lowered:
+        return f"모델이 설치되지 않았거나 찾을 수 없습니다: {error_text}"
+    if "does not support images" in lowered or "vision" in lowered:
+        return f"현재 모델이 이미지 입력을 처리하지 못합니다: {error_text}"
+    return f"로컬 모델 호출이 반복 실패해 분석을 중단했습니다: {error_text}"
 
 
 def _create_ocr_engine(config: BatchAnalysisConfig) -> object | None:

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 from typing import Any
-import urllib.request
 
-from korail_program.judge.gemma_client import OllamaVisionConfig, encode_image_base64
+from korail_program.judge.gemma_client import (
+    OllamaVisionConfig,
+    encode_image_base64,
+    extract_ollama_message_content,
+    post_ollama_chat,
+)
 from korail_program.judge.schema import parse_judge_json
 
 STATION_OCR_SYSTEM_PROMPT = """
@@ -52,23 +55,13 @@ class VlmStationOcrEngine:
             image_b64=encode_image_base64(image_path),
             route_hint=route_hint,
         )
-        request = urllib.request.Request(
-            f"{self.config.base_url.rstrip('/')}/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        response_text = extract_ollama_message_content(
+            post_ollama_chat(
+                base_url=self.config.base_url,
+                payload=payload,
+                timeout_s=self.config.timeout_s,
+            )
         )
-        with urllib.request.urlopen(request, timeout=self.config.timeout_s) as response:
-            body = json.loads(response.read().decode("utf-8"))
-
-        message = body.get("message", {})
-        if isinstance(message, dict) and "content" in message:
-            response_text = str(message["content"])
-        elif "response" in body:
-            response_text = str(body["response"])
-        else:
-            raise ValueError(f"Unexpected Ollama response shape: {body!r}")
-
         parsed = parse_judge_json(response_text)
         return VlmStationOcrResult(
             raw_text=_coerce_text(parsed.get("raw_text") or parsed.get("text")),

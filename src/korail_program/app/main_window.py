@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
         self.analysis_list.clear_cards()
         self.events_list.clear_cards()
         self.progress.setValue(0)
+        self.progress.set_tone("neutral")
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
         self._clear_inspector()
@@ -372,9 +373,11 @@ class MainWindow(QMainWindow):
         self.session_chip.setText("분석 준비")
         self.session_chip.set_tone("warning")
         self.progress.setValue(5)
+        self.progress.set_tone("warning")
         self.start_button.setEnabled(False)
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
+        self.events_list.set_empty_text("분석 중입니다. 이벤트가 감지되면 여기에 표시됩니다.")
         for path, card in self._queue_cards.items():
             card.set_status("대기", "warning")
             self._analysis_cards[path].set_state(
@@ -416,37 +419,51 @@ class MainWindow(QMainWindow):
         self.session_chip.setText("분석 중")
         self.session_chip.set_tone("warning")
         self.progress.setValue(45)
+        self.progress.set_tone("warning")
         self._log("배치 분석 시작")
         worker.start()
 
     def _handle_analysis_succeeded(self, result: BatchAnalysisResult) -> None:
         self._last_result = result
         self.progress.setValue(100)
-        self.session_chip.setText("완료")
-        self.session_chip.set_tone("success")
+        if result.aborted:
+            tone = "error"
+            session_text = "중단"
+        elif result.failure_count:
+            tone = "warning"
+            session_text = "완료/확인 필요"
+        else:
+            tone = "success"
+            session_text = "완료"
+        self.progress.set_tone(tone)
+        self.session_chip.setText(session_text)
+        self.session_chip.set_tone(tone)
         self.event_count_chip.setText(f"{result.event_count}건")
-        self.event_count_chip.set_tone("success" if result.event_count else "neutral")
+        self.event_count_chip.set_tone("success" if result.event_count else tone)
         self.model_chip.setText("Gemma4 12B 사용")
-        self.model_chip.set_tone("success")
+        self.model_chip.set_tone("error" if result.aborted else "success")
         self.ocr_chip.setText(f"VLM OCR {result.ocr_observation_count}건")
-        self.ocr_chip.set_tone("success" if result.ocr_observation_count else "warning")
+        self.ocr_chip.set_tone("success" if result.ocr_observation_count else tone)
 
         for path, card in self._queue_cards.items():
-            card.set_status("완료", "success")
+            card.set_status(session_text, tone)
             self._analysis_cards[path].set_state(
-                "완료",
-                "success",
-                "리포트와 캡처 생성 완료",
+                session_text,
+                tone,
+                _analysis_stage_message(result),
                 100,
             )
 
-        self._populate_events(result)
+        self._populate_events(result, empty_text=_event_empty_message(result))
         self._log(f"리포트 생성 완료: {result.report_html}")
+        if result.failure_summary:
+            self._log(result.failure_summary)
         if result.failure_count:
             self._log(f"처리 실패 {result.failure_count}건은 observations.json에 기록됨")
 
     def _handle_analysis_failed(self, message: str) -> None:
         self.progress.setValue(0)
+        self.progress.set_tone("error")
         self.session_chip.setText("실패")
         self.session_chip.set_tone("error")
         for path, card in self._queue_cards.items():
@@ -459,7 +476,9 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(True)
         self._analysis_worker = None
 
-    def _populate_events(self, result: BatchAnalysisResult) -> None:
+    def _populate_events(self, result: BatchAnalysisResult, *, empty_text: str | None = None) -> None:
+        if empty_text:
+            self.events_list.set_empty_text(empty_text)
         self.events_list.clear_cards()
         self._event_payloads.clear()
         self._event_capture_paths.clear()
@@ -676,6 +695,35 @@ class MainWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.log_panel.append(message)
+
+
+def _event_empty_message(result: BatchAnalysisResult) -> str:
+    if result.event_count:
+        return "분석 결과가 생성되면 이벤트가 카드로 정리됩니다."
+    if result.aborted:
+        return (
+            "모델 호출 오류로 분석이 중단되었습니다. "
+            "리포트의 처리 상태와 실행 로그에서 Ollama 오류를 확인하세요."
+        )
+    if result.failure_count:
+        return (
+            "기준 위험도에 걸리는 이벤트는 없지만 일부 프레임 처리 실패가 있습니다. "
+            "리포트의 처리 실패 항목을 확인하세요."
+        )
+    return (
+        "분석 완료: 기준 위험도(중간 이상)에 걸리는 이벤트가 없습니다. "
+        "필요하면 샘플링 간격을 줄이거나 리포트 기준 위험도를 낮춰 다시 분석하세요."
+    )
+
+
+def _analysis_stage_message(result: BatchAnalysisResult) -> str:
+    if result.aborted:
+        return result.failure_summary or "모델 호출 오류로 분석 중단"
+    if result.failure_count:
+        return f"리포트 생성 완료 / 처리 실패 {result.failure_count}건 확인 필요"
+    if result.event_count:
+        return f"리포트 생성 완료 / 이벤트 {result.event_count}건"
+    return "리포트 생성 완료 / 기준 위험도 이벤트 없음"
 
 
 def _find_capture_for_event(event: dict[str, object], records: list[object]) -> Path | None:
