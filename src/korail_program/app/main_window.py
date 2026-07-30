@@ -18,14 +18,15 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -184,7 +185,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(10)
 
         header = QHBoxLayout()
-        header.addWidget(icon_label("video-outline", color=ICON_MUTED))
         title = QLabel("영상")
         title.setObjectName("SectionTitle")
         header.addWidget(title)
@@ -192,31 +192,41 @@ class MainWindow(QMainWindow):
         self.queue_count_chip = StatusChip("0개", "neutral")
         header.addWidget(self.queue_count_chip)
 
-        self.add_files_button = QPushButton("추가")
-        self.add_files_button.setIcon(material_icon("folder-plus-outline"))
-        self.add_files_button.setIconSize(QSize(18, 18))
-        self.add_files_button.clicked.connect(self._choose_files)
-        header.addWidget(self.add_files_button)
-
         self.queue_list = DropQueueList()
+        self.queue_list.setObjectName("QueueList")
         self.queue_list.files_dropped.connect(self.add_video_files)
         self.queue_list.currentItemChanged.connect(self._on_queue_selection_changed)
 
-        empty_hint = QLabel("mp4, avi, mov, mkv 파일을 드래그하세요.")
-        empty_hint.setObjectName("Muted")
-        empty_hint.setWordWrap(True)
+        bottom_actions = QHBoxLayout()
+        bottom_actions.setSpacing(8)
+        self.add_files_button = QPushButton("영상 추가")
+        self.add_files_button.setObjectName("MainActionButton")
+        self.add_files_button.setIcon(material_icon("folder-plus-outline"))
+        self.add_files_button.setIconSize(QSize(18, 18))
+        self.add_files_button.clicked.connect(self._choose_files)
 
-        self.clear_button = QPushButton("대기열 비우기")
-        self.clear_button.setObjectName("DangerButton")
-        self.clear_button.setIcon(material_icon("delete-outline", color=ICON_ERROR))
-        self.clear_button.setIconSize(QSize(18, 18))
-        self.clear_button.clicked.connect(self.clear_queue)
+        self.more_button = QToolButton()
+        self.more_button.setObjectName("IconButton")
+        self.more_button.setIcon(material_icon("dots-horizontal"))
+        self.more_button.setIconSize(QSize(20, 20))
+        self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.more_button.setMenu(self._build_queue_menu())
+
+        bottom_actions.addWidget(self.add_files_button, stretch=1)
+        bottom_actions.addWidget(self.more_button)
 
         layout.addLayout(header)
-        layout.addWidget(empty_hint)
+        layout.addWidget(_divider())
         layout.addWidget(self.queue_list, stretch=1)
-        layout.addWidget(self.clear_button)
+        layout.addWidget(_divider())
+        layout.addLayout(bottom_actions)
         return panel
+
+    def _build_queue_menu(self) -> QMenu:
+        menu = QMenu(self)
+        clear_action = menu.addAction(material_icon("delete-outline", color=ICON_ERROR), "대기열 비우기")
+        clear_action.triggered.connect(self.clear_queue)
+        return menu
 
     def _build_work_panel(self) -> QWidget:
         panel = QFrame()
@@ -226,7 +236,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         action_row = QHBoxLayout()
-        action_row.addWidget(icon_label("clipboard-text-clock-outline", color=ICON_MUTED))
         title = QLabel("작업 흐름")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
@@ -247,13 +256,7 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.export_button)
 
-        timeline = QFrame()
-        timeline.setObjectName("Timeline")
-        timeline_layout = QVBoxLayout(timeline)
-        timeline_layout.setContentsMargins(12, 12, 12, 12)
-        timeline_layout.setSpacing(8)
         timeline_header = QHBoxLayout()
-        timeline_header.addWidget(icon_label("timeline-clock-outline", color=ICON_MUTED))
         timeline_title = QLabel("타임라인")
         timeline_title.setObjectName("SectionTitle")
         self.session_chip = StatusChip("대기 중", "neutral")
@@ -261,13 +264,11 @@ class MainWindow(QMainWindow):
         timeline_header.addStretch(1)
         timeline_header.addWidget(self.session_chip)
         self.timeline_list = QListWidget()
+        self.timeline_list.setObjectName("TimelineList")
         self.timeline_list.setFrameShape(QFrame.Shape.NoFrame)
         self.timeline_list.setSpacing(6)
-        timeline_layout.addLayout(timeline_header)
-        timeline_layout.addWidget(self.timeline_list, stretch=1)
 
         result_header = QHBoxLayout()
-        result_header.addWidget(icon_label("alert-outline", color=ICON_MUTED))
         result_title = QLabel("탐지 이벤트")
         result_title.setObjectName("SectionTitle")
         self.event_count_chip = StatusChip("0건", "neutral")
@@ -293,9 +294,13 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
 
         layout.addLayout(action_row)
-        layout.addWidget(timeline, stretch=2)
+        layout.addWidget(_divider())
+        layout.addLayout(timeline_header)
+        layout.addWidget(self.timeline_list, stretch=2)
+        layout.addWidget(_divider())
         layout.addLayout(result_header)
         layout.addWidget(self.results_table, stretch=3)
+        layout.addWidget(_divider())
         layout.addWidget(self.progress)
 
         self._append_timeline("앱 준비 완료", "neutral", "영상 파일을 등록하면 분석 작업을 구성할 수 있습니다.")
@@ -309,7 +314,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
 
         header = QHBoxLayout()
-        header.addWidget(icon_label("file-search-outline", color=ICON_MUTED))
         title = QLabel("상세")
         title.setObjectName("SectionTitle")
         self.detail_status_chip = StatusChip("선택 없음", "neutral")
@@ -352,10 +356,14 @@ class MainWindow(QMainWindow):
         self.log.setMaximumHeight(150)
 
         layout.addLayout(header)
+        layout.addWidget(_divider())
         layout.addWidget(self.capture_placeholder)
+        layout.addWidget(_divider())
         layout.addWidget(fields)
+        layout.addWidget(_divider())
         layout.addWidget(evidence_label)
         layout.addWidget(self.evidence_text, stretch=1)
+        layout.addWidget(_divider())
         layout.addWidget(log_label)
         layout.addWidget(self.log)
         return panel
@@ -574,6 +582,14 @@ class MainWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.log.appendPlainText(message)
+
+
+def _divider() -> QFrame:
+    line = QFrame()
+    line.setObjectName("Divider")
+    line.setFrameShape(QFrame.Shape.NoFrame)
+    return line
+
 
 def tone_label(tone: str) -> str:
     return {

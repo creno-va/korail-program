@@ -37,6 +37,13 @@ QLabel#Panel {
     border-radius: 8px;
 }
 
+QFrame#Divider {
+    background: #d8dde5;
+    border: none;
+    min-height: 1px;
+    max-height: 1px;
+}
+
 QFrame#QueueCard {
     background: #f8f9fb;
     border: none;
@@ -94,12 +101,49 @@ QPushButton#DangerButton {
     color: #842029;
 }
 
-QListWidget, QTableWidget, QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+QPushButton#MainActionButton {
+    background: #e1e6ee;
+    min-height: 36px;
+}
+
+QToolButton#IconButton {
+    background: #eaecf0;
+    border: none;
+    border-radius: 6px;
+    min-width: 40px;
+    min-height: 40px;
+}
+
+QToolButton#IconButton:hover {
+    background: #dde1e7;
+}
+
+QMenu {
+    background: #ffffff;
+    border: none;
+    padding: 6px;
+}
+
+QMenu::item {
+    padding: 8px 28px 8px 12px;
+    border-radius: 6px;
+}
+
+QMenu::item:selected {
+    background: #f4f5f7;
+}
+
+QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background: #f4f5f7;
     border: none;
     border-radius: 6px;
     selection-background-color: #e1e6ee;
     selection-color: #1d1d1f;
+}
+
+QListWidget#QueueList,
+QListWidget#TimelineList {
+    background: transparent;
 }
 
 QListWidget::item {
@@ -114,7 +158,12 @@ QHeaderView::section {
 }
 
 QTableWidget {
+    background: #ffffff;
+    border: none;
+    border-radius: 6px;
     gridline-color: #ededed;
+    selection-background-color: #e1e6ee;
+    selection-color: #1d1d1f;
 }
 
 QProgressBar {
