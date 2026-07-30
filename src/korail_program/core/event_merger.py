@@ -17,17 +17,64 @@ def merge_judge_observations(
     gap_tolerance_ms: int = 1500,
     min_event_duration_ms: int = 2000,
 ) -> list[AnalysisEvent]:
-    risky_observations = sorted(
-        (observation for observation in observations if observation.is_risky),
-        key=lambda observation: observation.video_time_ms,
-    )
-    section_list = sorted(sections, key=lambda section: section.start_time_ms)
+    events: list[AnalysisEvent] = []
+    sections_by_video = _group_sections_by_video(sections)
+    for video_id, risky_observations in _group_risky_observations_by_video(observations).items():
+        section_list = sections_by_video.get(video_id, [])
+        for group in _contiguous_groups(
+            risky_observations,
+            sample_interval_ms=sample_interval_ms,
+            gap_tolerance_ms=gap_tolerance_ms,
+        ):
+            event = _event_from_group(
+                group,
+                sections=section_list,
+                sample_interval_ms=sample_interval_ms,
+                min_event_duration_ms=min_event_duration_ms,
+            )
+            if event is None:
+                continue
+            events.append(event)
+
+    return events
+
+
+def _group_risky_observations_by_video(
+    observations: Iterable[JudgeObservation],
+) -> dict[int, list[JudgeObservation]]:
+    groups: dict[int, list[JudgeObservation]] = {}
+    for observation in observations:
+        if observation.is_risky:
+            groups.setdefault(observation.video_id, []).append(observation)
+    return {
+        video_id: sorted(group, key=lambda observation: observation.video_time_ms)
+        for video_id, group in sorted(groups.items())
+    }
+
+
+def _group_sections_by_video(
+    sections: Iterable[SectionMapping],
+) -> dict[int, list[SectionMapping]]:
+    groups: dict[int, list[SectionMapping]] = {}
+    for section in sections:
+        groups.setdefault(section.video_id, []).append(section)
+    return {
+        video_id: sorted(group, key=lambda section: section.start_time_ms)
+        for video_id, group in groups.items()
+    }
+
+
+def _contiguous_groups(
+    risky_observations: list[JudgeObservation],
+    *,
+    sample_interval_ms: int,
+    gap_tolerance_ms: int,
+) -> list[list[JudgeObservation]]:
     if not risky_observations:
         return []
 
     groups: list[list[JudgeObservation]] = []
     current_group: list[JudgeObservation] = [risky_observations[0]]
-
     for observation in risky_observations[1:]:
         previous = current_group[-1]
         gap = observation.video_time_ms - previous.video_time_ms
@@ -37,36 +84,37 @@ def merge_judge_observations(
             groups.append(current_group)
             current_group = [observation]
     groups.append(current_group)
+    return groups
 
-    events: list[AnalysisEvent] = []
-    for group in groups:
-        start_time_ms = group[0].video_time_ms
-        end_time_ms = group[-1].video_time_ms + sample_interval_ms
-        if end_time_ms - start_time_ms < min_event_duration_ms:
-            if any(not observation.needs_human_review for observation in group):
-                end_time_ms = start_time_ms + min_event_duration_ms
-            else:
-                continue
 
-        section_start, section_end = resolve_event_section(start_time_ms, end_time_ms, section_list)
-        max_risk = max((observation.risk_level for observation in group), key=lambda item: item.priority)
-        summary = select_event_summary(group, max_risk)
+def _event_from_group(
+    group: list[JudgeObservation],
+    *,
+    sections: list[SectionMapping],
+    sample_interval_ms: int,
+    min_event_duration_ms: int,
+) -> AnalysisEvent | None:
+    start_time_ms = group[0].video_time_ms
+    end_time_ms = group[-1].video_time_ms + sample_interval_ms
+    if end_time_ms - start_time_ms < min_event_duration_ms:
+        if any(not observation.needs_human_review for observation in group):
+            end_time_ms = start_time_ms + min_event_duration_ms
+        else:
+            return None
 
-        events.append(
-            AnalysisEvent(
-                video_id=group[0].video_id,
-                start_time_ms=start_time_ms,
-                end_time_ms=end_time_ms,
-                section_start=section_start,
-                section_end=section_end,
-                risk_level=max_risk,
-                summary=summary,
-                needs_human_review=any(observation.needs_human_review for observation in group),
-                source_observation_count=len(group),
-            )
-        )
-
-    return events
+    section_start, section_end = resolve_event_section(start_time_ms, end_time_ms, sections)
+    max_risk = max((observation.risk_level for observation in group), key=lambda item: item.priority)
+    return AnalysisEvent(
+        video_id=group[0].video_id,
+        start_time_ms=start_time_ms,
+        end_time_ms=end_time_ms,
+        section_start=section_start,
+        section_end=section_end,
+        risk_level=max_risk,
+        summary=select_event_summary(group, max_risk),
+        needs_human_review=any(observation.needs_human_review for observation in group),
+        source_observation_count=len(group),
+    )
 
 
 def resolve_event_section(

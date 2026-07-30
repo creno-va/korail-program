@@ -185,11 +185,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
             if failure_summary:
                 break
             video_time_ms = (frame_index - 1) * interval_ms
-            _emit_progress(
+            _emit_frame_progress(
                 config,
-                stage="judging",
-                message=_frame_progress_message(video_path, frame_index, len(frames)),
-                percent=_analysis_percent(processed_frame_count, estimated_total_frames),
                 video_path=video_path,
                 video_index=video_id,
                 video_count=len(videos),
@@ -213,14 +210,14 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                         ocr_observations.append(ocr_observation)
                 except Exception as exc:  # noqa: BLE001
                     failures.append(
-                        {
-                            "stage": "ocr",
-                            "video_id": video_id,
-                            "video_name": video_path.name,
-                            "frame_path": str(frame_path),
-                            "video_time_ms": video_time_ms,
-                            "error": _error_text(exc),
-                        }
+                        _failure_record(
+                            stage="ocr",
+                            video_id=video_id,
+                            video_path=video_path,
+                            frame_path=frame_path,
+                            video_time_ms=video_time_ms,
+                            error=_error_text(exc),
+                        )
                     )
 
             try:
@@ -235,34 +232,31 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
             except Exception as exc:  # noqa: BLE001
                 error_text = _error_text(exc)
                 failures.append(
-                    {
-                        "video_id": video_id,
-                        "video_name": video_path.name,
-                        "frame_path": str(frame_path),
-                        "video_time_ms": video_time_ms,
-                        "stage": "judge",
-                        "error": error_text,
-                    }
+                    _failure_record(
+                        stage="judge",
+                        video_id=video_id,
+                        video_path=video_path,
+                        frame_path=frame_path,
+                        video_time_ms=video_time_ms,
+                        error=error_text,
+                    )
                 )
                 consecutive_judge_failures += 1
                 if _is_model_failure(exc) and consecutive_judge_failures >= MAX_CONSECUTIVE_JUDGE_FAILURES:
                     failure_summary = _model_failure_summary(error_text)
                     failures.append(
-                        {
-                            "stage": "system",
-                            "video_id": video_id,
-                            "video_name": video_path.name,
-                            "frame_path": str(frame_path),
-                            "video_time_ms": video_time_ms,
-                            "error": failure_summary,
-                        }
+                        _failure_record(
+                            stage="system",
+                            video_id=video_id,
+                            video_path=video_path,
+                            frame_path=frame_path,
+                            video_time_ms=video_time_ms,
+                            error=failure_summary,
+                        )
                     )
                     processed_frame_count += 1
-                    _emit_progress(
+                    _emit_frame_progress(
                         config,
-                        stage="judging",
-                        message=_frame_progress_message(video_path, frame_index, len(frames)),
-                        percent=_analysis_percent(processed_frame_count, estimated_total_frames),
                         video_path=video_path,
                         video_index=video_id,
                         video_count=len(videos),
@@ -273,11 +267,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     )
                     break
                 processed_frame_count += 1
-                _emit_progress(
+                _emit_frame_progress(
                     config,
-                    stage="judging",
-                    message=_frame_progress_message(video_path, frame_index, len(frames)),
-                    percent=_analysis_percent(processed_frame_count, estimated_total_frames),
                     video_path=video_path,
                     video_index=video_id,
                     video_count=len(videos),
@@ -298,23 +289,19 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                 min_report_risk=config.min_report_risk,
             )
             records.append(
-                {
-                    "video_id": video_id,
-                    "video_name": video_path.name,
-                    "video_path": str(video_path),
-                    "frame_path": str(frame_path),
-                    "capture_path": str(capture_path) if capture_path else None,
-                    "video_time_ms": video_time_ms,
-                    "observation": observation,
-                    "raw_response": raw_response,
-                }
+                _analysis_record(
+                    video_id=video_id,
+                    video_path=video_path,
+                    frame_path=frame_path,
+                    capture_path=capture_path,
+                    video_time_ms=video_time_ms,
+                    observation=observation,
+                    raw_response=raw_response,
+                )
             )
             processed_frame_count += 1
-            _emit_progress(
+            _emit_frame_progress(
                 config,
-                stage="judging",
-                message=_frame_progress_message(video_path, frame_index, len(frames)),
-                percent=_analysis_percent(processed_frame_count, estimated_total_frames),
                 video_path=video_path,
                 video_index=video_id,
                 video_count=len(videos),
@@ -473,6 +460,73 @@ def _emit_progress(
             total_frame_count=total_frame_count,
         )
     )
+
+
+def _emit_frame_progress(
+    config: BatchAnalysisConfig,
+    *,
+    video_path: Path,
+    video_index: int,
+    video_count: int,
+    frame_index: int,
+    frame_count: int,
+    processed_frame_count: int,
+    total_frame_count: int,
+) -> None:
+    _emit_progress(
+        config,
+        stage="judging",
+        message=_frame_progress_message(video_path, frame_index, frame_count),
+        percent=_analysis_percent(processed_frame_count, total_frame_count),
+        video_path=video_path,
+        video_index=video_index,
+        video_count=video_count,
+        frame_index=frame_index,
+        frame_count=frame_count,
+        processed_frame_count=processed_frame_count,
+        total_frame_count=total_frame_count,
+    )
+
+
+def _failure_record(
+    *,
+    stage: str,
+    video_id: int,
+    video_path: Path,
+    frame_path: Path,
+    video_time_ms: int,
+    error: str,
+) -> dict[str, object]:
+    return {
+        "stage": stage,
+        "video_id": video_id,
+        "video_name": video_path.name,
+        "frame_path": str(frame_path),
+        "video_time_ms": video_time_ms,
+        "error": error,
+    }
+
+
+def _analysis_record(
+    *,
+    video_id: int,
+    video_path: Path,
+    frame_path: Path,
+    capture_path: Path | None,
+    video_time_ms: int,
+    observation: JudgeObservation,
+    raw_response: str,
+) -> dict[str, object]:
+    return {
+        "video_id": video_id,
+        "video_name": video_path.name,
+        "video_path": str(video_path),
+        "frame_path": str(frame_path),
+        "capture_path": str(capture_path) if capture_path else None,
+        "video_time_ms": video_time_ms,
+        "observation": observation,
+        "raw_response": raw_response,
+    }
 
 
 def _estimate_sample_count(duration_ms: int, interval_s: float) -> int:
