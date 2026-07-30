@@ -17,6 +17,7 @@ def write_reports(
     suspicious_records: list[dict[str, object]],
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
+    ocr_observation_count: int = 0,
 ) -> tuple[Path, Path]:
     markdown_path = output_dir / "report.md"
     html_path = output_dir / "report.html"
@@ -24,6 +25,7 @@ def write_reports(
         build_markdown_report(
             video_count=video_count,
             sampled_frame_count=sampled_frame_count,
+            ocr_observation_count=ocr_observation_count,
             suspicious_records=suspicious_records,
             events=events,
             failures=failures,
@@ -35,6 +37,7 @@ def write_reports(
         build_html_report(
             video_count=video_count,
             sampled_frame_count=sampled_frame_count,
+            ocr_observation_count=ocr_observation_count,
             suspicious_records=suspicious_records,
             events=events,
             failures=failures,
@@ -53,12 +56,14 @@ def build_markdown_report(
     suspicious_records: list[dict[str, object]],
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
+    ocr_observation_count: int = 0,
 ) -> str:
     lines = [
         "# 지장수목 의심 프레임 분석 리포트",
         "",
         f"- 분석 영상: {video_count}개",
         f"- VQA 샘플 프레임: {sampled_frame_count}개",
+        f"- OCR 역명 관측: {ocr_observation_count}개",
         f"- 의심 캡처: {len(suspicious_records)}개",
         f"- 병합 이벤트: {len(events)}건",
         "",
@@ -80,7 +85,7 @@ def build_markdown_report(
                 f"{event.risk_level.value} | "
                 f"{format_timecode(event.start_time_ms)} | "
                 f"{format_timecode(event.end_time_ms)} | "
-                f"{event.summary} | "
+                f"{event.section_start} ~ {event.section_end}: {event.summary} | "
                 f"{event.capture_count} |"
             )
 
@@ -120,10 +125,11 @@ def build_html_report(
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
     output_dir: Path,
+    ocr_observation_count: int = 0,
 ) -> str:
     event_rows = "\n".join(_event_row(event) for event in events)
     if not event_rows:
-        event_rows = '<tr><td colspan="5" class="muted">의심 이벤트가 없습니다.</td></tr>'
+        event_rows = '<tr><td colspan="6" class="muted">의심 이벤트가 없습니다.</td></tr>'
 
     cards = "\n".join(_frame_card(record, output_dir=output_dir) for record in suspicious_records)
     if not cards:
@@ -188,13 +194,14 @@ def build_html_report(
   <section class="summary">
     <div class="metric">분석 영상<strong>{video_count}</strong></div>
     <div class="metric">VQA 샘플 프레임<strong>{sampled_frame_count}</strong></div>
+    <div class="metric">OCR 역명 관측<strong>{ocr_observation_count}</strong></div>
     <div class="metric">의심 캡처<strong>{len(suspicious_records)}</strong></div>
     <div class="metric">병합 이벤트<strong>{len(events)}</strong></div>
   </section>
   <section>
     <h2>이벤트 요약</h2>
     <table>
-      <thead><tr><th>위험도</th><th>시작</th><th>종료</th><th>요약</th><th>캡처</th></tr></thead>
+      <thead><tr><th>위험도</th><th>시작</th><th>종료</th><th>구간</th><th>요약</th><th>캡처</th></tr></thead>
       <tbody>{event_rows}</tbody>
     </table>
   </section>
@@ -214,6 +221,7 @@ def _event_row(event: AnalysisEvent) -> str:
         f"<td>{_risk_chip(event.risk_level)}</td>"
         f"<td>{format_timecode(event.start_time_ms)}</td>"
         f"<td>{format_timecode(event.end_time_ms)}</td>"
+        f"<td>{escape(event.section_start)} ~ {escape(event.section_end)}</td>"
         f"<td>{escape(event.summary)}</td>"
         f"<td>{event.capture_count}</td>"
         "</tr>"

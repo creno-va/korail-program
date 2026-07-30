@@ -1,8 +1,8 @@
 # Korail 지장수목 분석 프로그램
 
-전방 주행 영상에서 전차선로 주변 지장수목 후보 구간을 오프라인으로 분석하고, 검수용 캡처와 리포트로 정리하는 Python 데스크톱 프로그램입니다.
+전방 주행 영상에서 전차선로 주변 지장수목 후보 구간을 오프라인으로 분석하고, 검수용 캡처와 리포트로 정리하는 데스크톱 프로그램입니다.
 
-현재 저장소는 GUI 작업대와 분석 파이프라인 골격을 먼저 구축한 초기 구현입니다. 실제 Gemma/PaddleOCR/FFmpeg 실행 어댑터는 다음 단계에서 연결합니다.
+Windows 납품판은 Python 개발 환경이 없는 PC에서도 설치 마법사만으로 실행되도록 PyInstaller 앱, Ollama standalone 런타임, FFmpeg/FFprobe를 함께 포함합니다. 사용자는 앱 안의 `모델 설치` 버튼으로 `gemma4:12b`를 내려받은 뒤 바로 분석을 시작합니다.
 
 ## 기술 방향
 
@@ -10,7 +10,7 @@
 - GUI: PySide6, Qt Widgets
 - 디자인: Pretendard GOV 폰트, Material Design Icons, grayscale + success/warning/error 상태색
 - 프레임 judge: 로컬 멀티모달 LLM(`gemma4:12b`) 기반 VQA
-- 역명/OCR: PaddleOCR + 역명 사전 보정
+- 역명/OCR: 기본 VLM OCR(`gemma4:12b`) + 선택형 역명 사전 보정
 - 결과 저장: SQLite, 캡처 이미지, PDF/Excel 리포트
 
 ## 실행
@@ -128,7 +128,7 @@ Windows 납품용 실행파일과 설치 마법사는 PyInstaller + Inno Setup�
 - `dist/KorailAnalyzer/KorailAnalyzer.exe`
 - `dist/installer/KorailAnalyzerSetup-<version>.exe`
 
-설치 마법사에는 Ollama standalone runtime과 FFmpeg/FFprobe가 포함됩니다. 사용자는 별도 Ollama/FFmpeg 설치 없이 설치 마법사만 실행하면 되고, 앱의 `모델 설치` 버튼으로 `gemma4:12b` 모델 다운로드를 진행합니다.
+설치 마법사에는 Ollama standalone runtime과 FFmpeg/FFprobe가 포함됩니다. 사용자는 별도 Python/Ollama/FFmpeg 설치 없이 설치 마법사만 실행하면 되고, 앱의 `모델 설치` 버튼으로 `gemma4:12b` 모델 다운로드를 진행합니다. 역명 OCR도 기본값으로 같은 로컬 VLM을 사용하므로 별도 OCR 패키지 설치가 필요 없습니다.
 
 자세한 내용은 [패키징 문서](./docs/packaging.md)를 참고하세요.
 
@@ -140,10 +140,11 @@ Windows 납품용 실행파일과 설치 마법사는 PyInstaller + Inno Setup�
 - [분석 파이프라인 설계](./docs/pipeline-design.md)
 - [개발 환경 및 배포 방향](./docs/dev-env-and-packaging.md)
 
-## 다음 구현 후보
+## 구현 상태
 
-1. GUI 작업 큐와 실제 분석 worker 연결
-2. FFmpeg/OpenCV 프레임 추출 실행 경로 통합
-3. GUI 분석 worker와 배치 분석 경로 연결
-4. PaddleOCR ROI 및 역명 사전 보정 연결
-5. SQLite 저장과 PDF/Excel 리포트 생성
+- GUI 대기열, 영상별 분석 로그, 이벤트 카드, 상세 패널
+- 앱 내 Gemma4 모델 설치
+- FFmpeg 간격 샘플링
+- 로컬 VLM 프레임 judge
+- 로컬 VLM 역명 OCR 및 구간 매핑
+- HTML/Markdown 리포트와 캡처 이미지 생성

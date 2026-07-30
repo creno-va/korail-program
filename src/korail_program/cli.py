@@ -52,6 +52,24 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH") or str(resolve_ffprobe_executable()))
     analyze.add_argument("--max-width", type=int, default=1280)
     analyze.add_argument(
+        "--ocr-backend",
+        choices=["vlm", "auto", "paddle", "none"],
+        default=os.environ.get("KORAIL_OCR_BACKEND", "vlm"),
+        help="Station OCR backend. 'vlm' works with the bundled local model and needs no OCR package.",
+    )
+    analyze.add_argument(
+        "--ocr-interval-sec",
+        type=float,
+        default=float(os.environ.get("KORAIL_OCR_INTERVAL_SEC", "30")),
+        help="Sampling interval for station OCR. Use 0 to disable OCR.",
+    )
+    analyze.add_argument(
+        "--station-dictionary",
+        type=Path,
+        default=os.environ.get("KORAIL_STATION_DICTIONARY"),
+        help="Optional station-name text/CSV dictionary for OCR correction.",
+    )
+    analyze.add_argument(
         "--min-report-risk",
         choices=["low", "medium", "high", "낮음", "중간", "높음"],
         default="중간",
@@ -143,11 +161,15 @@ def _analyze_videos(args: argparse.Namespace) -> int:
             max_width=args.max_width,
             min_report_risk=RiskLevel.coerce(args.min_report_risk),
             recursive=args.recursive,
+            ocr_backend=args.ocr_backend,
+            ocr_interval_s=args.ocr_interval_sec if args.ocr_interval_sec > 0 else None,
+            station_dictionary_path=args.station_dictionary,
         )
     )
     print(f"Videos: {result.video_count}")
     print(f"Sampled frames: {result.sampled_frame_count}")
     print(f"Suspicious captures: {result.suspicious_frame_count}")
+    print(f"OCR observations: {result.ocr_observation_count}")
     print(f"Events: {result.event_count}")
     if result.failure_count:
         print(f"Failures: {result.failure_count}", file=sys.stderr)

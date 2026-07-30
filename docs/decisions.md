@@ -4,7 +4,7 @@
 
 결정: CPython을 기본 런타임으로 사용한다.
 
-PyPy는 Python 구현체이며 패키지 매니저가 아니다. 순수 Python 코드에는 장점이 있지만, 이 프로젝트는 PyTorch, PaddleOCR/PaddlePaddle, OpenCV, PySide6, CUDA 관련 네이티브 확장 의존성이 크다. 따라서 호환성과 납품 안정성을 우선해 CPython을 기준으로 한다.
+PyPy는 Python 구현체이며 패키지 매니저가 아니다. 순수 Python 코드에는 장점이 있지만, 이 프로젝트는 PySide6, PyInstaller, 영상 처리, 로컬 모델 런타임 연동처럼 Windows 패키징 안정성이 중요하다. 따라서 호환성과 납품 안정성을 우선해 CPython을 기준으로 한다.
 
 권장 버전:
 
@@ -62,13 +62,18 @@ docs/
 
 ## D-005. 역명/위치 OCR
 
-결정: Gemma judge와 분리해 PaddleOCR 기반 OCR 파이프라인을 둔다.
+결정: Gemma judge와 분리된 OCR 파이프라인을 두되, 기본 백엔드는 같은 로컬 멀티모달 LLM의 VLM OCR 프롬프트로 둔다.
 
 이유:
 
-- 화면 오버레이의 작은 한글 텍스트는 전문 OCR이 더 안정적
+- 납품 PC에 Python 개발 환경, PaddleOCR, PaddlePaddle을 별도로 설치하지 않아도 앱 기본 기능이 동작해야 함
+- 앱 내 모델 설치로 받은 `gemma4:12b`를 judge와 OCR이 공유하면 설치 리소스와 장애 지점이 줄어듦
+- OCR 실패가 judge 결과에 직접 영향을 주지 않도록 책임은 계속 분리함
 - 역명 사전, 노선 정보, 전후 보간을 결합해 오인식을 줄일 수 있음
-- OCR 실패가 judge 결과에 직접 영향을 주지 않도록 책임을 분리함
+
+보류:
+
+- PaddleOCR은 사내 검증 후 정확도와 속도가 충분할 때 선택형 고속 백엔드로 다시 포함한다.
 
 ## D-006. 데이터 저장
 
@@ -85,10 +90,10 @@ docs/
 
 ## D-007. 배포 방식
 
-결정: 초기 납품은 one-folder 설치본을 우선한다.
+결정: 초기 납품은 one-folder 앱을 Inno Setup 설치 마법사로 감싸 배포한다.
 
 이유:
 
-- 모델 파일, FFmpeg, OCR 모델, 리포트 템플릿 포함이 쉬움
+- Ollama standalone 런타임, FFmpeg, 리포트 템플릿 포함이 쉬움
 - one-file은 대형 모델과 CUDA 의존성 때문에 실행 지연과 장애 원인 추적이 어려움
 - 설치 프로그램은 Inno Setup 또는 NSIS를 검토한다.

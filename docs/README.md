@@ -9,8 +9,8 @@
 - 개발 언어: Python 3.11+ CPython
 - GUI: PySide6, Qt Widgets
 - 프레임 judge: 로컬 멀티모달 LLM
-- 역명/OCR: PaddleOCR + 역명 사전 보정
-- 영상 처리: FFmpeg + OpenCV
+- 역명/OCR: 기본 VLM OCR + 선택형 역명 사전 보정
+- 영상 처리: FFmpeg
 - 저장소: SQLite
 - 리포트: PDF + Excel
 

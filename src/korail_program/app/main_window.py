@@ -2,49 +2,71 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QProcessEnvironment, QSize, Qt, QTimer
+from PySide6.QtCore import QProcess, QProcessEnvironment, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
-    QAbstractItemView,
     QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
-    QPushButton,
     QSplitter,
-    QTableWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from korail_program.app.icons import ICON_ERROR, material_icon
+from korail_program.analysis.batch import BatchAnalysisConfig, BatchAnalysisResult, run_batch_analysis
 from korail_program.app.theme import APP_STYLESHEET
 from korail_program.app.widgets import (
+    ActionButton,
     AnalysisStatusCard,
-    DropQueueList,
-    EmptyState,
+    CardList,
+    EventCard,
+    ProgressTrack,
     QueueCard,
     QueueFile,
     StatusChip,
+    TextPanel,
     horizontal_divider,
 )
 from korail_program.config import DEFAULT_VISION_MODEL
-from korail_program.runtime import ollama_process_environment, resolve_ollama_executable
+from korail_program.core.models import RiskLevel
+from korail_program.core.timecode import format_timecode
+from korail_program.runtime import (
+    ollama_process_environment,
+    resolve_ffmpeg_executable,
+    resolve_ffprobe_executable,
+    resolve_ollama_executable,
+    user_data_dir,
+)
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 DETAIL_FIELDS = ("영상", "구간", "타임코드", "위험도", "OCR", "검수")
+
+
+class AnalysisWorker(QThread):
+    log_message = Signal(str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, config: BatchAnalysisConfig) -> None:
+        super().__init__()
+        self.config = config
+
+    def run(self) -> None:
+        try:
+            self.log_message.emit("분석 엔진 시작")
+            result = run_batch_analysis(self.config)
+        except Exception as exc:  # noqa: BLE001
+            self.failed.emit(str(exc))
+            return
+        self.succeeded.emit(result)
 
 
 class MainWindow(QMainWindow):
@@ -53,14 +75,19 @@ class MainWindow(QMainWindow):
         self._queued_files: dict[Path, QueueFile] = {}
         self._queue_cards: dict[Path, QueueCard] = {}
         self._analysis_cards: dict[Path, AnalysisStatusCard] = {}
-        self._analysis_empty_item: QListWidgetItem | None = None
+        self._event_payloads: dict[int, dict[str, object]] = {}
+        self._event_capture_paths: dict[int, Path] = {}
+        self._last_result: BatchAnalysisResult | None = None
+        self._analysis_worker: AnalysisWorker | None = None
         self._model_install_process: QProcess | None = None
         self._ollama_server_process: QProcess | None = None
+
         self.setWindowTitle("전차선로 지장수목 분석")
         self.resize(1360, 860)
         self.setMinimumSize(1120, 720)
         self._build_ui()
         self._apply_theme()
+        self._refresh_runtime_status()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -94,26 +121,20 @@ class MainWindow(QMainWindow):
         self.queue_count_chip = StatusChip("0개", "neutral")
         header.addWidget(self.queue_count_chip)
 
-        self.queue_list = DropQueueList()
-        self.queue_list.setObjectName("QueueList")
+        self.queue_list = CardList(
+            "mp4, avi, mov, mkv 파일을 드래그하거나 아래 버튼으로 추가하세요.",
+            accept_drops=True,
+        )
         self.queue_list.files_dropped.connect(self.add_video_files)
-        self.queue_list.currentItemChanged.connect(self._on_queue_selection_changed)
+        self.queue_list.selection_changed.connect(self._on_queue_selection_changed)
 
         bottom_actions = QHBoxLayout()
         bottom_actions.setSpacing(8)
-        self.add_files_button = QPushButton("영상 추가")
-        self.add_files_button.setObjectName("MainActionButton")
-        self.add_files_button.setIcon(material_icon("folder-plus-outline"))
-        self.add_files_button.setIconSize(QSize(18, 18))
+        self.add_files_button = ActionButton("영상 추가", icon_name="folder-plus-outline")
         self.add_files_button.clicked.connect(self._choose_files)
-
-        self.more_button = QToolButton()
-        self.more_button.setObjectName("IconButton")
-        self.more_button.setIcon(material_icon("dots-horizontal"))
-        self.more_button.setIconSize(QSize(20, 20))
-        self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.more_button.setMenu(self._build_queue_menu())
-
+        self.more_button = ActionButton("", icon_name="dots-horizontal", compact=True)
+        self.more_button.setToolTip("대기열 비우기")
+        self.more_button.clicked.connect(self._clear_queue_with_confirm)
         bottom_actions.addWidget(self.add_files_button, stretch=1)
         bottom_actions.addWidget(self.more_button)
 
@@ -123,12 +144,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(horizontal_divider())
         layout.addLayout(bottom_actions)
         return panel
-
-    def _build_queue_menu(self) -> QMenu:
-        menu = QMenu(self)
-        clear_action = menu.addAction(material_icon("delete-outline", color=ICON_ERROR), "대기열 비우기")
-        clear_action.triggered.connect(self.clear_queue)
-        return menu
 
     def _build_work_panel(self) -> QWidget:
         panel = QFrame()
@@ -141,40 +156,33 @@ class MainWindow(QMainWindow):
         title = QLabel("분석 작업")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
+        self.runtime_chip = StatusChip("런타임 점검", "warning")
         self.model_chip = StatusChip("Gemma4 12B 필요", "warning")
-        self.ocr_chip = StatusChip("OCR 미연결", "warning")
+        self.ocr_chip = StatusChip("VLM OCR 대기", "warning")
+        action_row.addWidget(self.runtime_chip)
         action_row.addWidget(self.model_chip)
         action_row.addWidget(self.ocr_chip)
         action_row.addStretch(1)
 
-        self.install_model_button = QPushButton("모델 설치")
-        self.install_model_button.setIcon(material_icon("download-outline"))
-        self.install_model_button.setIconSize(QSize(18, 18))
+        self.install_model_button = ActionButton("모델 설치", icon_name="download-outline")
         self.install_model_button.clicked.connect(self.install_model)
-        self.start_button = QPushButton("분석 시작")
-        self.start_button.setIcon(material_icon("play-circle-outline"))
-        self.start_button.setIconSize(QSize(18, 18))
+        self.start_button = ActionButton("분석 시작", icon_name="play-circle-outline")
         self.start_button.clicked.connect(self.start_analysis)
-        self.export_button = QPushButton("리포트 내보내기")
-        self.export_button.setIcon(material_icon("file-export-outline"))
-        self.export_button.setIconSize(QSize(18, 18))
+        self.export_button = ActionButton("리포트 열기", icon_name="file-document-outline")
         self.export_button.clicked.connect(self.export_report)
         action_row.addWidget(self.install_model_button)
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.export_button)
 
         status_header = QHBoxLayout()
-        status_title = QLabel("영상별 로그")
+        status_title = QLabel("영상별 분석 로그")
         status_title.setObjectName("SectionTitle")
         self.session_chip = StatusChip("대기", "neutral")
         status_header.addWidget(status_title)
         status_header.addStretch(1)
         status_header.addWidget(self.session_chip)
 
-        self.analysis_list = QListWidget()
-        self.analysis_list.setObjectName("AnalysisList")
-        self.analysis_list.setFrameShape(QFrame.Shape.NoFrame)
-        self.analysis_list.setSpacing(8)
+        self.analysis_list = CardList("영상을 추가하면 파일별 분석 진행률이 표시됩니다.")
 
         result_header = QHBoxLayout()
         result_title = QLabel("탐지 이벤트")
@@ -184,22 +192,10 @@ class MainWindow(QMainWindow):
         result_header.addStretch(1)
         result_header.addWidget(self.event_count_chip)
 
-        self.results_table = QTableWidget(0, 6)
-        self.results_table.setHorizontalHeaderLabels(["상태", "위험도", "구간", "타임코드", "요약", "검수"])
-        self.results_table.verticalHeader().setVisible(False)
-        self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.results_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        self.results_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        self.results_table.itemSelectionChanged.connect(self._update_inspector_from_result)
+        self.events_list = CardList("분석 결과가 생성되면 이벤트가 카드로 정리됩니다.")
+        self.events_list.selection_changed.connect(self._update_inspector_from_event)
 
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
+        self.progress = ProgressTrack()
 
         layout.addLayout(action_row)
         layout.addWidget(horizontal_divider())
@@ -207,11 +203,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.analysis_list, stretch=2)
         layout.addWidget(horizontal_divider())
         layout.addLayout(result_header)
-        layout.addWidget(self.results_table, stretch=3)
+        layout.addWidget(self.events_list, stretch=3)
         layout.addWidget(horizontal_divider())
         layout.addWidget(self.progress)
-
-        self._show_empty_analysis_state()
         return panel
 
     def _build_inspector_panel(self) -> QWidget:
@@ -252,16 +246,13 @@ class MainWindow(QMainWindow):
 
         evidence_label = QLabel("Judge 판단 근거")
         evidence_label.setObjectName("SectionTitle")
-        self.evidence_text = QPlainTextEdit()
-        self.evidence_text.setReadOnly(True)
-        self.evidence_text.setPlaceholderText("이벤트를 선택하면 판단 근거가 표시됩니다.")
-        self.evidence_text.setMinimumHeight(150)
+        self.evidence_panel = TextPanel("이벤트를 선택하면 판단 근거가 표시됩니다.", max_lines=20)
+        self.evidence_panel.setMinimumHeight(150)
 
         log_label = QLabel("실행 로그")
         log_label.setObjectName("SectionTitle")
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumHeight(150)
+        self.log_panel = TextPanel(max_lines=80)
+        self.log_panel.setMaximumHeight(150)
 
         layout.addLayout(header)
         layout.addWidget(horizontal_divider())
@@ -270,10 +261,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(fields)
         layout.addWidget(horizontal_divider())
         layout.addWidget(evidence_label)
-        layout.addWidget(self.evidence_text, stretch=1)
+        layout.addWidget(self.evidence_panel, stretch=1)
         layout.addWidget(horizontal_divider())
         layout.addWidget(log_label)
-        layout.addWidget(self.log)
+        layout.addWidget(self.log_panel)
         return panel
 
     def _apply_theme(self) -> None:
@@ -293,6 +284,7 @@ class MainWindow(QMainWindow):
     def add_video_files(self, paths: list[Path]) -> None:
         added = 0
         skipped = 0
+        first_added: Path | None = None
         for path in paths:
             if not path.exists() or path.suffix.lower() not in VIDEO_EXTENSIONS:
                 skipped += 1
@@ -304,15 +296,11 @@ class MainWindow(QMainWindow):
 
             queue_file = QueueFile(path=normalized, size_bytes=normalized.stat().st_size)
             self._queued_files[normalized] = queue_file
-            card = QueueCard(queue_file)
-            self._queue_cards[normalized] = card
-
-            item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, str(normalized))
-            item.setSizeHint(QSize(260, 86))
-            self.queue_list.addItem(item)
-            self.queue_list.setItemWidget(item, card)
+            queue_card = QueueCard(queue_file)
+            self._queue_cards[normalized] = queue_card
+            self.queue_list.add_card(normalized, queue_card)
             self._add_analysis_status_card(normalized, queue_file)
+            first_added = first_added or normalized
             added += 1
 
         if added:
@@ -320,63 +308,182 @@ class MainWindow(QMainWindow):
         if skipped:
             self._log(f"중복 또는 미지원 파일 {skipped}개 제외")
         self._refresh_header()
+        if first_added is not None:
+            self.queue_list.select_key(first_added)
+
+    def _clear_queue_with_confirm(self) -> None:
+        if not self._queued_files:
+            return
+        answer = QMessageBox.question(
+            self,
+            "대기열 비우기",
+            "등록된 영상을 모두 제거할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.clear_queue()
 
     def clear_queue(self) -> None:
         self._queued_files.clear()
         self._queue_cards.clear()
         self._analysis_cards.clear()
-        self.queue_list.clear()
-        self.analysis_list.clear()
-        self.results_table.setRowCount(0)
+        self._event_payloads.clear()
+        self._event_capture_paths.clear()
+        self._last_result = None
+        self.queue_list.clear_cards()
+        self.analysis_list.clear_cards()
+        self.events_list.clear_cards()
         self.progress.setValue(0)
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
         self._clear_inspector()
-        self._show_empty_analysis_state()
         self._log("대기열 초기화")
         self._refresh_header()
 
     def start_analysis(self) -> None:
+        if self._analysis_worker is not None and self._analysis_worker.isRunning():
+            self._log("분석이 이미 진행 중입니다.")
+            return
         if not self._queued_files:
             self._log("분석 보류: 영상 파일 없음")
             QMessageBox.warning(self, "영상 없음", "분석할 영상 파일을 먼저 등록하세요.")
             return
 
-        self.results_table.setRowCount(0)
-        total = len(self._queued_files)
-        self.session_chip.setText("준비 점검")
-        self.session_chip.set_tone("warning")
-        self.progress.setValue(0)
-
-        for index, (path, queue_file) in enumerate(self._queued_files.items(), start=1):
-            card = self._queue_cards[path]
-            analysis_card = self._analysis_cards[path]
-            card.set_status("점검", "warning")
-            analysis_card.set_state(
-                "점검",
-                "warning",
-                "파일 확인 완료 / 모델, OCR 파이프라인 연결 대기",
-                20,
+        ollama_path = resolve_ollama_executable()
+        if ollama_path is None:
+            self.runtime_chip.setText("Ollama 없음")
+            self.runtime_chip.set_tone("error")
+            QMessageBox.warning(
+                self,
+                "Ollama 런타임 없음",
+                "설치 파일에 Ollama 런타임이 포함되어 있지 않습니다. 최신 설치 파일로 다시 설치하세요.",
             )
-            progress = int(index / total * 35)
-            self.progress.setValue(progress)
-            card.set_status("연결 대기", "warning")
-            analysis_card.set_state(
-                "연결 대기",
-                "warning",
-                f"{DEFAULT_VISION_MODEL}, PaddleOCR 실행 어댑터 연결 필요",
-                progress,
-            )
+            return
 
-        self.session_chip.setText("백엔드 연결 대기")
+        self._ensure_ollama_server(str(ollama_path))
+        self._prepare_analysis_cards()
+        QTimer.singleShot(1600, self._start_analysis_worker)
+
+    def _prepare_analysis_cards(self) -> None:
+        self.events_list.clear_cards()
+        self._event_payloads.clear()
+        self._event_capture_paths.clear()
+        self._last_result = None
+        self.session_chip.setText("분석 준비")
         self.session_chip.set_tone("warning")
-        self.model_chip.setText("Gemma4 12B 연결 필요")
-        self.model_chip.set_tone("warning")
-        self.ocr_chip.setText("PaddleOCR 연결 필요")
-        self.ocr_chip.set_tone("warning")
+        self.progress.setValue(5)
+        self.start_button.setEnabled(False)
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
-        self._log(f"분석 파이프라인 연결 대기: {DEFAULT_VISION_MODEL}/PaddleOCR 실행 단계 필요")
+        for path, card in self._queue_cards.items():
+            card.set_status("대기", "warning")
+            self._analysis_cards[path].set_state(
+                "대기",
+                "warning",
+                "프레임 추출, VQA Judge, VLM OCR 준비",
+                10,
+            )
+
+    def _start_analysis_worker(self) -> None:
+        output_dir = user_data_dir() / "reports" / "analysis"
+        config = BatchAnalysisConfig(
+            inputs=list(self._queued_files),
+            output_dir=output_dir,
+            interval_s=10.0,
+            model=DEFAULT_VISION_MODEL,
+            route_hint=None,
+            ffmpeg_path=resolve_ffmpeg_executable(),
+            ffprobe_path=resolve_ffprobe_executable(),
+            min_report_risk=RiskLevel.MEDIUM,
+            ocr_backend="vlm",
+            ocr_interval_s=30.0,
+        )
+        worker = AnalysisWorker(config)
+        self._analysis_worker = worker
+        worker.log_message.connect(self._log)
+        worker.succeeded.connect(self._handle_analysis_succeeded)
+        worker.failed.connect(self._handle_analysis_failed)
+        worker.finished.connect(self._handle_analysis_finished)
+
+        for path, card in self._queue_cards.items():
+            card.set_status("분석 중", "warning")
+            self._analysis_cards[path].set_state(
+                "분석 중",
+                "warning",
+                f"{DEFAULT_VISION_MODEL} Judge + VLM OCR 실행 중",
+                45,
+            )
+        self.session_chip.setText("분석 중")
+        self.session_chip.set_tone("warning")
+        self.progress.setValue(45)
+        self._log("배치 분석 시작")
+        worker.start()
+
+    def _handle_analysis_succeeded(self, result: BatchAnalysisResult) -> None:
+        self._last_result = result
+        self.progress.setValue(100)
+        self.session_chip.setText("완료")
+        self.session_chip.set_tone("success")
+        self.event_count_chip.setText(f"{result.event_count}건")
+        self.event_count_chip.set_tone("success" if result.event_count else "neutral")
+        self.model_chip.setText("Gemma4 12B 사용")
+        self.model_chip.set_tone("success")
+        self.ocr_chip.setText(f"VLM OCR {result.ocr_observation_count}건")
+        self.ocr_chip.set_tone("success" if result.ocr_observation_count else "warning")
+
+        for path, card in self._queue_cards.items():
+            card.set_status("완료", "success")
+            self._analysis_cards[path].set_state(
+                "완료",
+                "success",
+                "리포트와 캡처 생성 완료",
+                100,
+            )
+
+        self._populate_events(result)
+        self._log(f"리포트 생성 완료: {result.report_html}")
+        if result.failure_count:
+            self._log(f"처리 실패 {result.failure_count}건은 observations.json에 기록됨")
+
+    def _handle_analysis_failed(self, message: str) -> None:
+        self.progress.setValue(0)
+        self.session_chip.setText("실패")
+        self.session_chip.set_tone("error")
+        for path, card in self._queue_cards.items():
+            card.set_status("실패", "error")
+            self._analysis_cards[path].set_state("실패", "error", message, 0)
+        self._log(f"분석 실패: {message}")
+        QMessageBox.warning(self, "분석 실패", message)
+
+    def _handle_analysis_finished(self) -> None:
+        self.start_button.setEnabled(True)
+        self._analysis_worker = None
+
+    def _populate_events(self, result: BatchAnalysisResult) -> None:
+        self.events_list.clear_cards()
+        self._event_payloads.clear()
+        self._event_capture_paths.clear()
+
+        events_payload = json.loads(result.events_json.read_text(encoding="utf-8"))
+        observations_payload = json.loads(result.observations_json.read_text(encoding="utf-8"))
+        video_lookup = {
+            int(item["video_id"]): Path(str(item["file_path"])).name
+            for item in observations_payload.get("videos", [])
+        }
+        records = observations_payload.get("records", [])
+
+        for index, event in enumerate(events_payload, start=1):
+            if not isinstance(event, dict):
+                continue
+            self._event_payloads[index] = event
+            capture_path = _find_capture_for_event(event, records)
+            if capture_path is not None:
+                self._event_capture_paths[index] = capture_path
+            video_name = video_lookup.get(int(event.get("video_id", 0)), "영상")
+            self.events_list.add_card(index, EventCard(event, video_name=video_name))
+
+        if self._event_payloads:
+            self.events_list.select_key(next(iter(self._event_payloads)))
 
     def install_model(self) -> None:
         if self._model_install_process is not None:
@@ -386,12 +493,12 @@ class MainWindow(QMainWindow):
 
         ollama_path = resolve_ollama_executable()
         if ollama_path is None:
-            self.model_chip.setText("Ollama 없음")
-            self.model_chip.set_tone("error")
+            self.runtime_chip.setText("Ollama 없음")
+            self.runtime_chip.set_tone("error")
             QMessageBox.warning(
                 self,
                 "Ollama 런타임 없음",
-                "앱 설치에 Ollama 런타임이 포함되어 있지 않습니다. 설치 파일을 다시 받아 설치하세요.",
+                "설치 파일에 Ollama 런타임이 포함되어 있지 않습니다. 최신 설치 파일로 다시 설치하세요.",
             )
             return
 
@@ -416,6 +523,8 @@ class MainWindow(QMainWindow):
         self.install_model_button.setEnabled(False)
         self.model_chip.setText("모델 설치 중")
         self.model_chip.set_tone("warning")
+        self.ocr_chip.setText("OCR 모델 공유")
+        self.ocr_chip.set_tone("warning")
         self._log(f"모델 설치 시작: ollama pull {DEFAULT_VISION_MODEL}")
         process.start()
 
@@ -447,12 +556,14 @@ class MainWindow(QMainWindow):
 
     def _handle_model_install_error(self, _error) -> None:
         self.install_model_button.setEnabled(True)
-        self.model_chip.setText("Ollama 필요")
+        self.model_chip.setText("모델 설치 실패")
         self.model_chip.set_tone("error")
+        self.ocr_chip.setText("OCR 대기")
+        self.ocr_chip.set_tone("error")
         QMessageBox.warning(
             self,
-            "Ollama 실행 필요",
-            "모델 설치를 위해 Ollama가 설치되어 있고 실행 중이어야 합니다.",
+            "모델 설치 실패",
+            "번들 Ollama 런타임 실행에 실패했습니다. 설치 파일을 다시 설치한 뒤 재시도하세요.",
         )
 
     def _handle_model_install_finished(self, exit_code: int, _exit_status=None) -> None:
@@ -460,79 +571,46 @@ class MainWindow(QMainWindow):
         if exit_code == 0:
             self.model_chip.setText("Gemma4 12B 설치됨")
             self.model_chip.set_tone("success")
+            self.ocr_chip.setText("VLM OCR 준비")
+            self.ocr_chip.set_tone("success")
             self._log(f"모델 설치 완료: {DEFAULT_VISION_MODEL}")
             return
         self.model_chip.setText("모델 설치 실패")
         self.model_chip.set_tone("error")
+        self.ocr_chip.setText("OCR 대기")
+        self.ocr_chip.set_tone("error")
         self._log(f"모델 설치 실패: exit_code={exit_code}")
 
     def export_report(self) -> None:
-        if self.results_table.rowCount() == 0:
-            QMessageBox.information(self, "내보낼 결과 없음", "먼저 분석 결과를 생성하세요.")
+        if self._last_result is None:
+            QMessageBox.information(self, "열 리포트 없음", "먼저 분석을 완료하세요.")
             return
-        target, _ = QFileDialog.getSaveFileName(
-            self,
-            "리포트 저장 위치",
-            "analysis_report.xlsx",
-            "Excel Workbook (*.xlsx);;PDF (*.pdf)",
-        )
-        if target:
-            self._log(f"리포트 엔진 연결 후 저장 예정: {target}")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_result.report_html)))
 
-    def _show_empty_analysis_state(self) -> None:
-        self.analysis_list.clear()
-        self._analysis_empty_item = QListWidgetItem()
-        empty = EmptyState("영상을 추가하면 파일별 분석 로그와 진행률이 여기에 표시됩니다.")
-        self._analysis_empty_item.setSizeHint(QSize(420, 96))
-        self.analysis_list.addItem(self._analysis_empty_item)
-        self.analysis_list.setItemWidget(self._analysis_empty_item, empty)
-
-    def _add_analysis_status_card(self, path: Path, queue_file: QueueFile) -> None:
-        if self._analysis_empty_item is not None:
-            row = self.analysis_list.row(self._analysis_empty_item)
-            self.analysis_list.takeItem(row)
-            self._analysis_empty_item = None
-
-        card = AnalysisStatusCard(queue_file)
-        item = QListWidgetItem()
-        item.setData(Qt.ItemDataRole.UserRole, str(path))
-        item.setSizeHint(QSize(420, 106))
-        self.analysis_list.addItem(item)
-        self.analysis_list.setItemWidget(item, card)
-        self._analysis_cards[path] = card
-
-    def _update_inspector_from_result(self) -> None:
-        selected = self.results_table.selectedItems()
-        if not selected:
+    def _update_inspector_from_event(self, key: object) -> None:
+        event = self._event_payloads.get(int(key))
+        if event is None:
             return
-        row = selected[0].row()
+
         self.detail_status_chip.setText("결과 선택")
         self.detail_status_chip.set_tone("warning")
-        self.detail_labels["영상"].setText(self._table_text(row, 4, fallback="-", user_role=True))
-        self.detail_labels["구간"].setText(self._table_text(row, 2))
-        self.detail_labels["타임코드"].setText(self._table_text(row, 3))
-        self.detail_labels["위험도"].setText("-")
-        self.detail_labels["OCR"].setText("연결 대기")
-        self.detail_labels["검수"].setText(self._table_text(row, 5))
-        self.evidence_text.setPlainText(self._table_text(row, 4))
-        self.capture_placeholder.setText("캡처 생성 대기")
+        section = f"{event.get('section_start', '구간 미확인')} ~ {event.get('section_end', '구간 미확인')}"
+        start_ms = int(event.get("start_time_ms", 0))
+        end_ms = int(event.get("end_time_ms", start_ms))
+        risk = RiskLevel.coerce(event.get("risk_level"))
+        self.detail_labels["영상"].setText(f"video_id={event.get('video_id', '-')}")
+        self.detail_labels["구간"].setText(section)
+        self.detail_labels["타임코드"].setText(
+            f"{format_timecode(start_ms)} - {format_timecode(end_ms)}"
+        )
+        self.detail_labels["위험도"].setText(risk.value)
+        self.detail_labels["OCR"].setText("VLM OCR 구간 매핑")
+        self.detail_labels["검수"].setText(str(event.get("review_status", "미확인")))
+        self.evidence_panel.set_text(str(event.get("summary", "")))
+        self._set_capture_preview(self._event_capture_paths.get(int(key)))
 
-    def _table_text(self, row: int, column: int, *, fallback: str = "-", user_role: bool = False) -> str:
-        item = self.results_table.item(row, column)
-        if item is None:
-            return fallback
-        if user_role:
-            value = item.data(Qt.ItemDataRole.UserRole)
-            return str(value) if value else fallback
-        return item.text() or fallback
-
-    def _on_queue_selection_changed(self, current: QListWidgetItem | None) -> None:
-        if current is None:
-            return
-        path_text = current.data(Qt.ItemDataRole.UserRole)
-        if not path_text:
-            return
-        path = Path(path_text)
+    def _on_queue_selection_changed(self, key: object) -> None:
+        path = Path(str(key))
         queue_file = self._queued_files.get(path)
         if queue_file is None:
             return
@@ -544,15 +622,33 @@ class MainWindow(QMainWindow):
         self.detail_labels["위험도"].setText("-")
         self.detail_labels["OCR"].setText("분석 전")
         self.detail_labels["검수"].setText("미확인")
-        self.evidence_text.setPlainText(str(queue_file.path))
+        self.evidence_panel.set_text(str(queue_file.path))
+        self.capture_placeholder.setPixmap(QPixmap())
         self.capture_placeholder.setText("영상 등록됨")
+
+    def _set_capture_preview(self, path: Path | None) -> None:
+        if path is None or not path.exists():
+            self.capture_placeholder.setPixmap(QPixmap())
+            self.capture_placeholder.setText("캡처는 리포트 폴더에 저장됩니다.")
+            return
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            self.capture_placeholder.setText(str(path))
+            return
+        scaled = pixmap.scaled(
+            QSize(320, 210),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.capture_placeholder.setPixmap(scaled)
 
     def _clear_inspector(self) -> None:
         self.detail_status_chip.setText("선택 없음")
         self.detail_status_chip.set_tone("neutral")
         for value in self.detail_labels.values():
             value.setText("-")
-        self.evidence_text.clear()
+        self.evidence_panel.clear()
+        self.capture_placeholder.setPixmap(QPixmap())
         self.capture_placeholder.setText("캡처 프레임")
 
     def _refresh_header(self) -> None:
@@ -560,8 +656,44 @@ class MainWindow(QMainWindow):
         self.queue_count_chip.setText(f"{count}개")
         self.queue_count_chip.set_tone("success" if count else "neutral")
 
+    def _refresh_runtime_status(self) -> None:
+        if resolve_ollama_executable() is None:
+            self.runtime_chip.setText("Ollama 없음")
+            self.runtime_chip.set_tone("error")
+        elif str(resolve_ffmpeg_executable()) == "ffmpeg" or str(resolve_ffprobe_executable()) == "ffprobe":
+            self.runtime_chip.setText("FFmpeg 확인 필요")
+            self.runtime_chip.set_tone("warning")
+        else:
+            self.runtime_chip.setText("런타임 포함")
+            self.runtime_chip.set_tone("success")
+        self.ocr_chip.setText("VLM OCR 준비")
+        self.ocr_chip.set_tone("neutral")
+
+    def _add_analysis_status_card(self, path: Path, queue_file: QueueFile) -> None:
+        card = AnalysisStatusCard(queue_file)
+        self.analysis_list.add_card(path, card, selectable=False)
+        self._analysis_cards[path] = card
+
     def _log(self, message: str) -> None:
-        self.log.appendPlainText(message)
+        self.log_panel.append(message)
+
+
+def _find_capture_for_event(event: dict[str, object], records: list[object]) -> Path | None:
+    video_id = int(event.get("video_id", 0))
+    start_ms = int(event.get("start_time_ms", 0))
+    end_ms = int(event.get("end_time_ms", start_ms))
+    for record in records:
+        if not isinstance(record, dict) or not record.get("capture_path"):
+            continue
+        observation = record.get("observation")
+        if not isinstance(observation, dict):
+            continue
+        if int(observation.get("video_id", 0)) != video_id:
+            continue
+        video_time_ms = int(observation.get("video_time_ms", 0))
+        if start_ms <= video_time_ms < end_ms:
+            return Path(str(record["capture_path"]))
+    return None
 
 
 def _process_environment() -> QProcessEnvironment:

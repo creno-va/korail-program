@@ -15,10 +15,12 @@ PyPy는 사용하지 않습니다.
 
 이유:
 
-- PySide6, OpenCV, PaddleOCR/PaddlePaddle, PyTorch 계열 패키지 호환성은 CPython이 가장 안정적입니다.
+- PySide6, PyInstaller, 영상 처리, 로컬 모델 런타임 연동은 CPython이 가장 안정적입니다.
 - 납품 프로그램은 JIT 성능보다 패키징 안정성, 드라이버 호환성, 장애 추적 가능성이 더 중요합니다.
 
-## 설치 및 실행
+## 개발 설치 및 실행
+
+아래 절차는 소스 체크아웃에서 개발자가 실행할 때만 필요합니다. Windows 납품판 사용자는 Python이나 venv를 설치하지 않고 설치 마법사와 앱 내 `모델 설치` 버튼만 사용합니다.
 
 ### Windows
 
@@ -89,9 +91,9 @@ korail-program/
 ```text
 PySide6 GUI
   -> analysis worker
-  -> FFmpeg/OpenCV frame extraction
+  -> FFmpeg frame extraction
   -> Gemma multimodal judge
-  -> PaddleOCR station OCR
+  -> Gemma VLM station OCR
   -> SQLite/report outputs
 ```
 
@@ -102,7 +104,9 @@ korail-analyzer analyze-videos
   -> 루트 또는 지정 경로 영상 검색
   -> FFmpeg로 N초 간격 프레임 추출
   -> Ollama Gemma VLM에 이미지 VQA 요청
+  -> Ollama Gemma VLM에 역명 OCR VQA 요청
   -> JSON schema 검증
+  -> OCR 역명 관측 기반 구간 매핑
   -> 의심 프레임 captures/ 복사
   -> HTML/Markdown/JSON 리포트 생성
 ```
@@ -122,7 +126,7 @@ GitHub Release용 standalone 설치 자산:
 - Ollama
 - vLLM
 
-초기 PoC에서는 설치와 API 호출이 쉬운 방식을 우선합니다. 납품 단계에서는 모델 파일, 실행 바이너리, 설정 파일을 설치 패키지에 함께 묶습니다.
+초기 PoC에서는 설치와 API 호출이 쉬운 방식을 우선합니다. 납품 단계에서는 실행 바이너리와 설정 파일을 설치 패키지에 함께 묶고, 대형 모델은 앱 안에서 지정된 사용자 데이터 폴더로 내려받습니다.
 
 ## Windows 패키징
 
@@ -142,8 +146,8 @@ one-folder를 우선하는 이유:
 - 앱 실행 파일
 - Python runtime dependency bundle
 - FFmpeg binary
-- OCR model files
-- Gemma model files 또는 로컬 모델 서버 실행 파일
+- 로컬 모델 서버 실행 파일
+- 앱 내 모델 설치로 내려받는 Gemma 모델 파일
 - 기본 설정 파일
 - 역명 사전
 - 리포트 템플릿
@@ -164,7 +168,7 @@ one-folder를 우선하는 이유:
 원칙:
 
 - 분석 중 외부 통신 금지
-- 모델 다운로드는 설치 또는 납품 전에 완료
+- 모델 다운로드는 앱 내 `모델 설치` 단계에서 완료하고, 분석 중에는 외부 통신하지 않음
 - 실행 중 자동 업데이트 없음
 - 로그에는 원본 영상 경로만 저장하고 원본 영상 복사는 하지 않음
 - 캡처, 리포트, DB만 산출물로 저장
@@ -175,18 +179,18 @@ one-folder를 우선하는 이유:
 
 - 영상 1개 입력
 - FFmpeg 프레임 추출
-- PaddleOCR ROI 추론
+- VLM OCR 역명 추론
 - Gemma judge JSON 출력
 - CSV/JSON 결과 저장
 
 ### 2단계: 데스크톱 MVP
 
 - PySide6 영상 대기열
-- 분석 시작/중지
+- 앱 내 모델 설치
+- 분석 시작
 - 파일별 진행 로그
-- 결과 목록
+- 이벤트 카드
 - 캡처 뷰어
-- SQLite 저장
 
 ### 3단계: 리포트 및 검수
 
