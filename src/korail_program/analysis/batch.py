@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 
 from korail_program.analysis.report import write_reports
+from korail_program.config import DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
 from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.frame_extractor import FrameExtractionConfig, extract_frames
 from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel, VideoMetadata, to_jsonable
@@ -25,8 +26,8 @@ class BatchAnalysisConfig:
     inputs: list[Path]
     output_dir: Path
     interval_s: float = 10.0
-    model: str = "gemma3:4b"
-    ollama_url: str = "http://localhost:11434"
+    model: str = DEFAULT_VISION_MODEL
+    ollama_url: str = DEFAULT_OLLAMA_URL
     route_hint: str | None = None
     ffmpeg_path: str | Path = "ffmpeg"
     ffprobe_path: str | Path = "ffprobe"

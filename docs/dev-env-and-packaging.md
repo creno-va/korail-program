@@ -107,7 +107,14 @@ korail-analyzer analyze-videos
   -> HTML/Markdown/JSON 리포트 생성
 ```
 
-기본 모델은 `gemma3:4b`입니다. 더 정확한 판정이 필요하고 장비 GPU/메모리가 충분하면 `gemma3:12b` 또는 `gemma3:27b`로 올릴 수 있습니다.
+기본 모델은 `gemma4:12b`입니다. 설치 스크립트와 앱 내 모델 설치 버튼은 모두 이 모델을 기준으로 동작합니다.
+
+GitHub Release용 standalone 설치 자산:
+
+- `release/install_windows.ps1`
+- `release/install_macos.sh`
+
+이 두 파일은 repo를 미리 clone하지 않아도 최신 릴리즈 소스를 다운로드한 뒤 앱 설치와 `gemma4:12b` 모델 pull까지 수행합니다.
 
 모델 서버 후보:
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 from korail_program.analysis.batch import BatchAnalysisConfig, run_batch_analysis
+from korail_program.config import DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
 from korail_program.core.event_merger import merge_judge_observations
 from korail_program.core.models import RiskLevel, SectionMapping, to_jsonable
 from korail_program.db.repository import initialize_database
@@ -43,8 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument("--out", type=Path, default=Path("output") / "analysis")
     analyze.add_argument("--interval-sec", type=float, default=10.0)
-    analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", "gemma3:4b"))
-    analyze.add_argument("--ollama-url", default=os.environ.get("OLLAMA_HOST", "http://localhost:11434"))
+    analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL))
+    analyze.add_argument("--ollama-url", default=os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_URL))
     analyze.add_argument("--route-hint")
     analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH", "ffmpeg"))
     analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH", "ffprobe"))

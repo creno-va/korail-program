@@ -11,12 +11,12 @@ from korail_program.judge.prompts import build_frame_judge_prompt
 class GemmaClientTests(unittest.TestCase):
     def test_build_ollama_chat_payload(self) -> None:
         payload = build_ollama_chat_payload(
-            model="gemma3:4b",
+            model="gemma4:12b",
             prompt=build_frame_judge_prompt(route_hint="경부선 상행"),
             image_b64="abc123",
         )
 
-        self.assertEqual(payload["model"], "gemma3:4b")
+        self.assertEqual(payload["model"], "gemma4:12b")
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["format"], "json")
         messages = payload["messages"]

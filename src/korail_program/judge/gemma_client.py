@@ -8,13 +8,14 @@ import json
 from pathlib import Path
 import urllib.request
 
+from korail_program.config import DEFAULT_OLLAMA_URL, DEFAULT_VISION_MODEL
 from korail_program.judge.prompts import JUDGE_SYSTEM_PROMPT, build_frame_judge_prompt
 
 
 @dataclass(frozen=True, slots=True)
 class OllamaVisionConfig:
-    base_url: str = "http://localhost:11434"
-    model: str = "gemma3:4b"
+    base_url: str = DEFAULT_OLLAMA_URL
+    model: str = DEFAULT_VISION_MODEL
     timeout_s: int = 120
 
 

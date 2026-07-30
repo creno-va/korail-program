@@ -30,3 +30,4 @@
 
 - Gemma 4 overview: https://ai.google.dev/gemma/docs/core
 - Gemma 4 model card: https://ai.google.dev/gemma/docs/core/model_card_4
+- Ollama Gemma 4: https://ollama.com/library/gemma4

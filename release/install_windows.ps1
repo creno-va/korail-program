@@ -1,14 +1,12 @@
 param(
+    [string]$Repo = "creno-va/korail-program",
+    [string]$Version = "latest",
     [string]$Model = "gemma4:12b",
-    [switch]$SkipSystemPackages,
-    [switch]$RunGui,
-    [switch]$RunRootAnalysis
+    [string]$InstallRoot = "$env:LOCALAPPDATA\KorailProgram",
+    [switch]$SkipSystemPackages
 )
 
 $ErrorActionPreference = "Stop"
-
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
-Set-Location $ProjectRoot
 
 function Get-CommandPath {
     param([string]$Name)
@@ -47,6 +45,37 @@ function Get-PythonCommand {
     return @()
 }
 
+function Get-ReleaseTag {
+    if ($Version -ne "latest") {
+        return $Version
+    }
+    $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
+    return $release.tag_name
+}
+
+$Tag = Get-ReleaseTag
+$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("korail-program-" + [System.Guid]::NewGuid().ToString("N"))
+$ZipPath = Join-Path $TempRoot "source.zip"
+$ExtractPath = Join-Path $TempRoot "source"
+$SourceDir = Join-Path $InstallRoot "source"
+
+New-Item -ItemType Directory -Force -Path $TempRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
+
+$SourceUrl = "https://github.com/$Repo/archive/refs/tags/$Tag.zip"
+Write-Host "Downloading $SourceUrl"
+Invoke-WebRequest $SourceUrl -OutFile $ZipPath
+Expand-Archive $ZipPath -DestinationPath $ExtractPath -Force
+$ExpandedDir = Get-ChildItem -LiteralPath $ExtractPath -Directory | Select-Object -First 1
+if (-not $ExpandedDir) {
+    throw "Could not find expanded source directory."
+}
+
+if (Test-Path $SourceDir) {
+    Remove-Item -LiteralPath $SourceDir -Recurse -Force
+}
+Copy-Item -LiteralPath $ExpandedDir.FullName -Destination $SourceDir -Recurse
+
 $PythonCommand = Get-PythonCommand
 if ($PythonCommand.Count -eq 0) {
     Install-WingetPackage -Id "Python.Python.3.12" -Name "Python 3.12"
@@ -78,9 +107,10 @@ if ($PythonCommand.Count -gt 1) {
     $PythonArgs = $PythonCommand[1..($PythonCommand.Count - 1)]
 }
 
-& $PythonExecutable @PythonArgs -m venv .venv
-& ".\.venv\Scripts\python.exe" -m pip install --upgrade pip
-& ".\.venv\Scripts\python.exe" -m pip install .
+$VenvPath = Join-Path $InstallRoot ".venv"
+& $PythonExecutable @PythonArgs -m venv $VenvPath
+& (Join-Path $VenvPath "Scripts\python.exe") -m pip install --upgrade pip
+& (Join-Path $VenvPath "Scripts\python.exe") -m pip install $SourceDir
 
 if ($Ollama) {
     try {
@@ -94,15 +124,12 @@ if ($Ollama) {
     Write-Warning "Ollama was not found. Install Ollama manually, then run: ollama pull $Model"
 }
 
+$RunGui = Join-Path $InstallRoot "Run Korail Analyzer.cmd"
+$RunAnalysis = Join-Path $InstallRoot "Analyze Videos.cmd"
+Set-Content -LiteralPath $RunGui -Encoding ASCII -Value "@echo off`r`n`"$VenvPath\Scripts\korail-analyzer-gui.exe`"`r`n"
+Set-Content -LiteralPath $RunAnalysis -Encoding ASCII -Value "@echo off`r`nset INPUT_DIR=%~1`r`nif `"%INPUT_DIR%`"==`"`" set INPUT_DIR=%CD%`r`n`"$VenvPath\Scripts\korail-analyzer.exe`" analyze-videos `"%INPUT_DIR%`" --out `"%CD%\output\analysis`" --model $Model`r`n"
+
 Write-Host ""
-Write-Host "Install complete."
-Write-Host "Run GUI: .\scripts\run_gui.cmd"
-Write-Host "Run root video analysis: .\scripts\analyze_root_videos.cmd"
-
-if ($RunRootAnalysis) {
-    & ".\.venv\Scripts\korail-analyzer.exe" analyze-videos "." --out "output\analysis" --interval-sec 10 --model $Model --min-report-risk medium
-}
-
-if ($RunGui) {
-    & ".\.venv\Scripts\korail-analyzer-gui.exe"
-}
+Write-Host "Install complete: $InstallRoot"
+Write-Host "Run GUI: $RunGui"
+Write-Host "Analyze videos: $RunAnalysis"

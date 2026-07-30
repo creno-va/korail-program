@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QProcess, QSize, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -40,6 +40,7 @@ from korail_program.app.widgets import (
     StatusChip,
     horizontal_divider,
 )
+from korail_program.config import DEFAULT_VISION_MODEL
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 DETAIL_FIELDS = ("영상", "구간", "타임코드", "위험도", "OCR", "검수")
@@ -52,6 +53,7 @@ class MainWindow(QMainWindow):
         self._queue_cards: dict[Path, QueueCard] = {}
         self._analysis_cards: dict[Path, AnalysisStatusCard] = {}
         self._analysis_empty_item: QListWidgetItem | None = None
+        self._model_install_process: QProcess | None = None
         self.setWindowTitle("전차선로 지장수목 분석")
         self.resize(1360, 860)
         self.setMinimumSize(1120, 720)
@@ -137,12 +139,16 @@ class MainWindow(QMainWindow):
         title = QLabel("분석 작업")
         title.setObjectName("SectionTitle")
         action_row.addWidget(title)
-        self.model_chip = StatusChip("Gemma 미연결", "warning")
+        self.model_chip = StatusChip("Gemma4 12B 필요", "warning")
         self.ocr_chip = StatusChip("OCR 미연결", "warning")
         action_row.addWidget(self.model_chip)
         action_row.addWidget(self.ocr_chip)
         action_row.addStretch(1)
 
+        self.install_model_button = QPushButton("모델 설치")
+        self.install_model_button.setIcon(material_icon("download-outline"))
+        self.install_model_button.setIconSize(QSize(18, 18))
+        self.install_model_button.clicked.connect(self.install_model)
         self.start_button = QPushButton("분석 시작")
         self.start_button.setIcon(material_icon("play-circle-outline"))
         self.start_button.setIconSize(QSize(18, 18))
@@ -151,6 +157,7 @@ class MainWindow(QMainWindow):
         self.export_button.setIcon(material_icon("file-export-outline"))
         self.export_button.setIconSize(QSize(18, 18))
         self.export_button.clicked.connect(self.export_report)
+        action_row.addWidget(self.install_model_button)
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.export_button)
 
@@ -355,19 +362,72 @@ class MainWindow(QMainWindow):
             analysis_card.set_state(
                 "연결 대기",
                 "warning",
-                "Gemma, PaddleOCR 실행 어댑터 연결 필요",
+                f"{DEFAULT_VISION_MODEL}, PaddleOCR 실행 어댑터 연결 필요",
                 progress,
             )
 
         self.session_chip.setText("백엔드 연결 대기")
         self.session_chip.set_tone("warning")
-        self.model_chip.setText("Gemma 연결 필요")
+        self.model_chip.setText("Gemma4 12B 연결 필요")
         self.model_chip.set_tone("warning")
         self.ocr_chip.setText("PaddleOCR 연결 필요")
         self.ocr_chip.set_tone("warning")
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
-        self._log("분석 파이프라인 연결 대기: Gemma/PaddleOCR 실행 단계 필요")
+        self._log(f"분석 파이프라인 연결 대기: {DEFAULT_VISION_MODEL}/PaddleOCR 실행 단계 필요")
+
+    def install_model(self) -> None:
+        if self._model_install_process is not None:
+            if self._model_install_process.state() != QProcess.ProcessState.NotRunning:
+                self._log("모델 설치가 이미 진행 중입니다.")
+                return
+
+        process = QProcess(self)
+        self._model_install_process = process
+        process.setProgram("ollama")
+        process.setArguments(["pull", DEFAULT_VISION_MODEL])
+        process.readyReadStandardOutput.connect(
+            lambda: self._append_process_output(process.readAllStandardOutput())
+        )
+        process.readyReadStandardError.connect(
+            lambda: self._append_process_output(process.readAllStandardError())
+        )
+        process.errorOccurred.connect(self._handle_model_install_error)
+        process.finished.connect(self._handle_model_install_finished)
+
+        self.install_model_button.setEnabled(False)
+        self.model_chip.setText("모델 설치 중")
+        self.model_chip.set_tone("warning")
+        self._log(f"모델 설치 시작: ollama pull {DEFAULT_VISION_MODEL}")
+        process.start()
+
+    def _append_process_output(self, payload) -> None:
+        text = bytes(payload).decode("utf-8", errors="replace").strip()
+        if not text:
+            return
+        for line in text.splitlines():
+            self._log(line.strip())
+
+    def _handle_model_install_error(self, _error) -> None:
+        self.install_model_button.setEnabled(True)
+        self.model_chip.setText("Ollama 필요")
+        self.model_chip.set_tone("error")
+        QMessageBox.warning(
+            self,
+            "Ollama 실행 필요",
+            "모델 설치를 위해 Ollama가 설치되어 있고 실행 중이어야 합니다.",
+        )
+
+    def _handle_model_install_finished(self, exit_code: int, _exit_status=None) -> None:
+        self.install_model_button.setEnabled(True)
+        if exit_code == 0:
+            self.model_chip.setText("Gemma4 12B 설치됨")
+            self.model_chip.set_tone("success")
+            self._log(f"모델 설치 완료: {DEFAULT_VISION_MODEL}")
+            return
+        self.model_chip.setText("모델 설치 실패")
+        self.model_chip.set_tone("error")
+        self._log(f"모델 설치 실패: exit_code={exit_code}")
 
     def export_report(self) -> None:
         if self.results_table.rowCount() == 0:
