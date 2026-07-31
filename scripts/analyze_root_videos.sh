@@ -6,8 +6,8 @@ PROJECT_ROOT=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 ANALYZER="$PROJECT_ROOT/.venv/bin/korail-analyzer"
 
 MODEL=${KORAIL_VISION_MODEL:-gpt-5.6-terra}
-INTERVAL_SEC=${KORAIL_INTERVAL_SEC:-10}
-MIN_REPORT_RISK=${KORAIL_MIN_REPORT_RISK:-medium}
+INTERVAL_SEC=${KORAIL_INTERVAL_SEC:-15}
+MIN_REPORT_RISK=${KORAIL_MIN_REPORT_RISK:-low}
 
 if [ ! -x "$ANALYZER" ]; then
   echo "Analyzer launcher not found."

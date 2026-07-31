@@ -77,8 +77,8 @@ sh scripts/analyze_root_videos.sh
 기본값:
 
 - 모델: `gpt-5.6-terra`
-- VQA 샘플링 간격: 10초
-- 리포트 포함 기준: `medium` 이상
+- VQA 샘플링 간격: 15초
+- 리포트 포함 기준: `low` 이상
 - 산출물: `output/analysis.../report.html`, `report.md`, `observations.json`, `events.json`, `captures/`
 
 ## 설치 마법사 빌드

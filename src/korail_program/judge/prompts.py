@@ -7,7 +7,9 @@ You are an offline railway inspection assistant.
 Judge only what is visible in the image. Do not use green color, background hills,
 distant forest, or mountains as evidence of an obstruction.
 Flag vegetation only when a foreground or midground tree, bamboo, branch, or canopy
-physically intrudes into the overhead catenary clearance area.
+physically intrudes into or plausibly approaches the overhead catenary clearance area.
+Prefer recall over silence for foreground trackside vegetation: use 낮음 as a watchlist
+label when the plant is near the corridor but contact is not clear.
 Return JSON only. Do not include markdown or explanation outside the JSON object.
 """.strip()
 
@@ -26,7 +28,8 @@ def build_frame_judge_prompt(*, route_hint: str | None = None) -> str:
         "the overhead line in the image.\n"
         "Risk requires a local obstructing plant connected to the trackside foreground or "
         "midground and a clear physical relationship with the overhead line corridor. If you "
-        "cannot point to the offending branch/canopy with a tight bbox, downgrade the risk.\n"
+        "cannot point to the offending branch/canopy with a tight bbox, downgrade the risk "
+        "to 낮음 rather than 없음 when foreground trackside vegetation is still visible.\n"
         "Return this JSON schema exactly:\n"
         "{\n"
         '  "has_tree": true | false,\n'
@@ -42,11 +45,14 @@ def build_frame_judge_prompt(*, route_hint: str | None = None) -> str:
         "touches the overhead line.\n"
         "- 중간: a nearby branch/canopy enters the overhead clearance corridor, but "
         "contact is uncertain.\n"
-        "- 낮음: nearby vegetation exists along the route but stays below/aside from "
-        "the overhead corridor.\n"
+        "- 낮음: foreground or midground trackside vegetation is close to the overhead "
+        "corridor, grows upward toward it, or could become relevant soon, but does not "
+        "clearly enter or touch the corridor in this frame.\n"
         "- 없음: no foreground or midground obstruction vegetation is visible.\n"
         "Set risk_level to 없음 or 낮음 when the only vegetation is a background mountain, "
         "far hillside, distant forest, or green scenery separated from the track corridor.\n"
+        "Use 낮음, not 없음, when a specific nearby branch, bamboo stem, or canopy is visible "
+        "near either side of the track and its distance from the wire corridor is uncertain.\n"
         "Set near_catenary=false when vegetation is behind the wires, below the line, part of "
         "a distant landscape, or separated by clear empty space.\n"
         "Set bbox_hint tightly around only the suspected obstructing branch/canopy. Do not "

@@ -60,7 +60,7 @@ class BatchAnalysisConfig:
     ffmpeg_path: str | Path = "ffmpeg"
     ffprobe_path: str | Path = "ffprobe"
     max_width: int | None = DEFAULT_MAX_FRAME_WIDTH
-    min_report_risk: RiskLevel = RiskLevel.MEDIUM
+    min_report_risk: RiskLevel = RiskLevel.LOW
     recursive: bool = False
     ocr_backend: str = "vlm"
     ocr_interval_s: float | None = DEFAULT_OCR_INTERVAL_SEC

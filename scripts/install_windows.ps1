@@ -80,7 +80,7 @@ Write-Host "Run GUI: .\scripts\run_gui.cmd"
 Write-Host "Run root video analysis: .\scripts\analyze_root_videos.cmd"
 
 if ($RunRootAnalysis) {
-    & ".\.venv\Scripts\korail-analyzer.exe" analyze-videos "." --out "output\analysis" --interval-sec 10 --model $Model --min-report-risk medium
+    & ".\.venv\Scripts\korail-analyzer.exe" analyze-videos "." --out "output\analysis" --interval-sec 15 --model $Model --min-report-risk low
 }
 
 if ($RunGui) {

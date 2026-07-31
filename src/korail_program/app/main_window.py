@@ -601,7 +601,7 @@ class MainWindow(QMainWindow):
             route_hint=None,
             ffmpeg_path=resolve_ffmpeg_executable(),
             ffprobe_path=resolve_ffprobe_executable(),
-            min_report_risk=RiskLevel.MEDIUM,
+            min_report_risk=RiskLevel.LOW,
             ocr_backend="vlm",
             ocr_interval_s=DEFAULT_OCR_INTERVAL_SEC,
         )
@@ -1006,8 +1006,8 @@ def _event_empty_message(result: BatchAnalysisResult) -> str:
             "리포트의 처리 실패 항목을 확인하세요."
         )
     return (
-        "분석 완료: 기준 위험도(중간 이상)에 걸리는 이벤트가 없습니다. "
-        "필요하면 샘플링 간격을 줄이거나 리포트 기준 위험도를 낮춰 다시 분석하세요."
+        "분석 완료: 낮음 이상으로 분류된 의심 이벤트가 없습니다. "
+        "필요하면 더 짧은 샘플링 간격으로 다시 분석하세요."
     )
 
 

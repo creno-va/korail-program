@@ -232,7 +232,7 @@ def build_html_report(
 <body>
 <main>
   <h1>지장수목 의심 프레임 분석 리포트</h1>
-  <p class="muted">샘플링된 영상 프레임을 로컬 멀티모달 LLM으로 판정한 결과입니다.</p>
+  <p class="muted">샘플링된 영상 프레임을 GPT vision VQA로 판정한 결과입니다.</p>
   {failure_summary_block}
   <section class="summary">
     <div class="metric">분석 영상<strong>{video_count}</strong></div>

@@ -1,7 +1,7 @@
 param(
     [string]$Model = $env:KORAIL_VISION_MODEL,
-    [double]$IntervalSec = 10,
-    [string]$MinReportRisk = "medium"
+    [double]$IntervalSec = 15,
+    [string]$MinReportRisk = "low"
 )
 
 $ErrorActionPreference = "Stop"

@@ -87,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--min-report-risk",
         choices=["low", "medium", "high", "낮음", "중간", "높음"],
-        default="중간",
+        default="낮음",
         help="Minimum risk level to copy into captures and reports.",
     )
     analyze.add_argument("--recursive", action="store_true")
