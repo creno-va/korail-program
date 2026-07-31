@@ -8,13 +8,67 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from korail_program.app.main_window import MainWindow, _build_frame_entries
 from korail_program.core.video_files import collect_video_candidates
 
 
 class AppVideoCandidateTests(unittest.TestCase):
+    def test_home_stepper_and_detail_navigation_share_analysis_state(self) -> None:
+        app = QApplication.instance() or QApplication([])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            video_path = Path(tmp_dir) / "stepper-sample.mp4"
+            video_path.write_bytes(b"")
+            window = MainWindow()
+            try:
+                self.assertIs(window.page_stack.currentWidget(), window.home_page)
+                self.assertEqual(window.home_page.upload_button.text(), "영상 업로드")
+                self.assertEqual(window.home_page.analysis_button.text(), "분석")
+                self.assertEqual(window.home_page.report_button.text(), "보고서")
+                self.assertEqual(
+                    window.home_page.findChild(QLabel, "HomeTitle").text(),
+                    "전차선로 지장수목 분석",
+                )
+                self.assertTrue(
+                    window.home_page._step_frames[0].isAncestorOf(
+                        window.home_page.selected_file_label
+                    )
+                )
+                self.assertFalse(window.home_page.analysis_button.isEnabled())
+                self.assertEqual(
+                    window.home_page._step_frames[0].property("stepState"), "active"
+                )
+
+                with mock.patch.object(window.video_player, "set_video"):
+                    window.add_video_files([video_path])
+
+                self.assertEqual(window.home_page.selected_file_label.text(), video_path.name)
+                self.assertTrue(window.home_page.analysis_button.isEnabled())
+                self.assertEqual(
+                    window.home_page._step_frames[1].property("stepState"), "active"
+                )
+
+                window._set_analysis_progress(37, "primary")
+                self.assertEqual(window.progress.value(), 37)
+                self.assertEqual(window.home_page.progress.value(), 37)
+
+                window._show_detail_page()
+                self.assertIs(window.page_stack.currentWidget(), window.detail_page)
+                window._show_home_page()
+                self.assertIs(window.page_stack.currentWidget(), window.home_page)
+
+                window._last_result = mock.Mock()
+                window._sync_primary_actions()
+                self.assertTrue(window.home_page.report_button.isEnabled())
+                self.assertEqual(
+                    window.home_page._step_frames[2].property("stepState"), "active"
+                )
+            finally:
+                window.close()
+                app.processEvents()
+
     def test_result_sidebar_keeps_each_suspicious_capture(self) -> None:
         events = [
             {

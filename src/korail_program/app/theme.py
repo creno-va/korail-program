@@ -15,6 +15,66 @@ QWidget {
     background: #f9fafb;
 }
 
+QStackedWidget#AppPages,
+QFrame#HomePage,
+QWidget#HomeContent {
+    background: #ffffff;
+    border: none;
+}
+
+QFrame#HomeStep {
+    background: #f2f4f6;
+    border: none;
+    border-radius: 20px;
+}
+
+QLabel#HomeTitle {
+    color: #191f28;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+QLabel#HomeStepNumber {
+    background: #dfe3e8;
+    color: #6b7684;
+    border: none;
+    border-radius: 19px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QLabel#HomeStepNumber[stepState="active"] {
+    background: #3182f6;
+    color: #ffffff;
+}
+
+QLabel#HomeStepNumber[stepState="complete"] {
+    background: #dbeafe;
+    color: #1b64da;
+}
+
+QLabel#HomeStepDescription {
+    color: #6b7684;
+    font-size: 14px;
+    line-height: 145%;
+}
+
+QLabel#HomeFileName {
+    background: #ffffff;
+    color: #333d4b;
+    border: none;
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QFrame#DetailNavigation {
+    background: #ffffff;
+    border: none;
+    border-bottom: 1px solid #d1d6db;
+}
+
 QLabel {
     background: transparent;
 }
@@ -229,6 +289,19 @@ QFrame#ActionButton[disabled="true"] {
 
 QFrame#ActionButton[disabled="true"] QLabel {
     color: #8b95a1;
+}
+
+QFrame#ActionButton[homeStep="true"] {
+    border-radius: 14px;
+}
+
+QFrame#ActionButton[homeStep="true"] QLabel#ButtonText {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+QFrame#ActionButton[homeStep="true"][disabled="true"] {
+    background: #e5e8eb;
 }
 
 QFrame#CardList {

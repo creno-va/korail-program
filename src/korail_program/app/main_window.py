@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +32,7 @@ from korail_program.analysis.batch import (
     BatchAnalysisResult,
     run_batch_analysis,
 )
+from korail_program.app.home_page import WorkflowHomePage
 from korail_program.app.model_dialog import ModelSettingsDialog
 from korail_program.app.theme import APP_STYLESHEET
 from korail_program.app.video_player import VideoPlayer
@@ -116,10 +118,36 @@ class MainWindow(QMainWindow):
         self._refresh_runtime_status()
 
     def _build_ui(self) -> None:
+        self.page_stack = QStackedWidget()
+        self.page_stack.setObjectName("AppPages")
+        self.home_page = WorkflowHomePage()
+        self.home_page.upload_requested.connect(self._choose_files)
+        self.home_page.analysis_requested.connect(self._toggle_selected_analysis)
+        self.home_page.report_requested.connect(self.save_pdf_report)
+        self.home_page.detail_requested.connect(self._show_detail_page)
+        self.detail_page = self._build_detail_page()
+        self.page_stack.addWidget(self.home_page)
+        self.page_stack.addWidget(self.detail_page)
+        self.page_stack.setCurrentWidget(self.home_page)
+        self.setCentralWidget(self.page_stack)
+
+    def _build_detail_page(self) -> QWidget:
         root = QWidget()
+        root.setObjectName("DetailPage")
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
+
+        navigation = QFrame()
+        navigation.setObjectName("DetailNavigation")
+        navigation_layout = QHBoxLayout(navigation)
+        navigation_layout.setContentsMargins(12, 8, 16, 8)
+        navigation_layout.setSpacing(8)
+        self.back_button = ActionButton("", icon_name="arrow-left", compact=True)
+        self.back_button.setToolTip("메인으로 돌아가기")
+        self.back_button.clicked.connect(self._show_home_page)
+        navigation_layout.addWidget(self.back_button)
+        navigation_layout.addStretch(1)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("WorkspaceSplitter")
@@ -133,8 +161,17 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
 
+        root_layout.addWidget(navigation)
         root_layout.addWidget(splitter, stretch=1)
-        self.setCentralWidget(root)
+        return root
+
+    def _show_home_page(self) -> None:
+        self.page_stack.setCurrentWidget(self.home_page)
+        self._sync_primary_actions()
+
+    def _show_detail_page(self) -> None:
+        self.page_stack.setCurrentWidget(self.detail_page)
+        self._sync_primary_actions()
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -493,8 +530,7 @@ class MainWindow(QMainWindow):
         self._selected_video_path = None
         self.analysis_list.clear_cards()
         self.events_list.clear_cards()
-        self.progress.setValue(0)
-        self.progress.set_tone("neutral")
+        self._set_analysis_progress(0, "neutral")
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
         self.video_player.clear()
@@ -548,8 +584,7 @@ class MainWindow(QMainWindow):
                 self.selected_video_meta.setText("왼쪽 목록에서 작업할 영상을 선택합니다.")
                 self.session_chip.setText("대기")
                 self.session_chip.set_tone("neutral")
-                self.progress.setValue(0)
-                self.progress.set_tone("neutral")
+                self._set_analysis_progress(0, "neutral")
                 self.analysis_stage_label.setText("영상 선택 대기")
                 self._reset_stats()
                 self._clear_inspector()
@@ -637,8 +672,7 @@ class MainWindow(QMainWindow):
         self._last_progress_log_key = None
         self.session_chip.setText("분석 준비")
         self.session_chip.set_tone("primary")
-        self.progress.setValue(5)
-        self.progress.set_tone("primary")
+        self._set_analysis_progress(5, "primary")
         self.analysis_stage_label.setText("분석 환경 확인 중")
         self.event_count_chip.setText("0건")
         self.event_count_chip.set_tone("neutral")
@@ -699,8 +733,7 @@ class MainWindow(QMainWindow):
         self.session_chip.setText("분석 중")
         self.session_chip.set_tone("primary")
         self.analysis_stage_label.setText("프레임 추출 준비")
-        self.progress.setValue(12)
-        self.progress.set_tone("primary")
+        self._set_analysis_progress(12, "primary")
         self._log(
             f"{path.name} 분석 시작: 모델 {self._selected_model}, "
             f"배치 분석 시작: VQA {DEFAULT_ANALYSIS_INTERVAL_SEC:g}초 간격, "
@@ -732,8 +765,7 @@ class MainWindow(QMainWindow):
             self._log_progress_if_needed(progress)
             return
 
-        self.progress.setValue(progress.percent)
-        self.progress.set_tone("primary")
+        self._set_analysis_progress(progress.percent, "primary")
         self.session_chip.set_tone("primary")
         self.analysis_stage_label.setText(progress.message)
         self.stat_values["processed"].setText(
@@ -788,8 +820,7 @@ class MainWindow(QMainWindow):
 
         if self._selected_video_path == path:
             self._last_result = result
-            self.progress.setValue(100)
-            self.progress.set_tone(tone)
+            self._set_analysis_progress(100, tone)
             self.session_chip.setText(session_text)
             self.session_chip.set_tone(tone)
             self.analysis_stage_label.setText(_analysis_stage_message(result))
@@ -810,7 +841,7 @@ class MainWindow(QMainWindow):
             card.set_finished()
             card.set_state("중지됨", "warning", message, card.progress_value)
         if self._selected_video_path == path:
-            self.progress.set_tone("warning")
+            self._set_analysis_progress_tone("warning")
             self.session_chip.setText("중지됨")
             self.session_chip.set_tone("warning")
             self.analysis_stage_label.setText(message)
@@ -823,8 +854,7 @@ class MainWindow(QMainWindow):
             card.set_finished()
             card.set_state("실패", "error", message, 0)
         if self._selected_video_path == path:
-            self.progress.setValue(0)
-            self.progress.set_tone("error")
+            self._set_analysis_progress(0, "error")
             self.session_chip.setText("실패")
             self.session_chip.set_tone("error")
             self.analysis_stage_label.setText(message)
@@ -988,8 +1018,7 @@ class MainWindow(QMainWindow):
             session_text, tone = _result_status(result)
             self.session_chip.setText(session_text)
             self.session_chip.set_tone(tone)
-            self.progress.setValue(100)
-            self.progress.set_tone(tone)
+            self._set_analysis_progress(100, tone)
             self._populate_events(result, empty_text=_event_empty_message(result))
             self.event_count_chip.setText(f"{result.event_count}건")
             self.event_count_chip.set_tone("success" if result.event_count else "neutral")
@@ -1006,20 +1035,17 @@ class MainWindow(QMainWindow):
             if path in self._analysis_workers and card is not None:
                 self.session_chip.setText("분석 중")
                 self.session_chip.set_tone("primary")
-                self.progress.setValue(card.progress_value)
-                self.progress.set_tone("primary")
+                self._set_analysis_progress(card.progress_value, "primary")
                 self.analysis_stage_label.setText(card.stage_text)
             elif path == self._pending_analysis_path:
                 self.session_chip.setText("분석 준비")
                 self.session_chip.set_tone("primary")
-                self.progress.setValue(5)
-                self.progress.set_tone("primary")
+                self._set_analysis_progress(5, "primary")
                 self.analysis_stage_label.setText("분석 환경 확인 중")
             else:
                 self.session_chip.setText("대기")
                 self.session_chip.set_tone("neutral")
-                self.progress.setValue(0)
-                self.progress.set_tone("neutral")
+                self._set_analysis_progress(0, "neutral")
                 self.analysis_stage_label.setText("분석 시작 대기")
         self._sync_primary_actions()
 
@@ -1086,6 +1112,51 @@ class MainWindow(QMainWindow):
             return
         card.set_idle()
 
+    def _set_analysis_progress(self, value: int, tone: str) -> None:
+        self.progress.setValue(value)
+        self.progress.set_tone(tone)
+        self.home_page.set_progress(value, tone)
+
+    def _set_analysis_progress_tone(self, tone: str) -> None:
+        self.progress.set_tone(tone)
+        self.home_page.set_progress_tone(tone)
+
+    def _configure_analysis_actions(
+        self,
+        *,
+        text: str,
+        home_text: str,
+        icon: str,
+        tone: str,
+        tooltip: str,
+        enabled: bool,
+        home_tone: str | None = None,
+    ) -> None:
+        self.analysis_button.setText(text)
+        self.analysis_button.set_icon(icon)
+        self.analysis_button.set_tone(tone)
+        self.analysis_button.setToolTip(tooltip)
+        self.analysis_button.setEnabled(enabled)
+        self.home_page.set_analysis_action(
+            text=home_text,
+            icon=icon,
+            tone=home_tone or tone,
+            tooltip=tooltip,
+            enabled=enabled,
+        )
+
+    def _sync_home_steps(self) -> None:
+        has_video = bool(self._queued_files)
+        has_report = self._last_result is not None
+        selected_path = (
+            self._selected_video_path if self._selected_video_path in self._queued_files else None
+        )
+        self.home_page.set_workflow_state(
+            has_video=has_video,
+            has_report=has_report,
+            selected_file=selected_path.name if selected_path is not None else None,
+        )
+
     def _sync_primary_actions(self) -> None:
         if not hasattr(self, "analysis_button"):
             return
@@ -1098,48 +1169,66 @@ class MainWindow(QMainWindow):
             if active_path == selected_path:
                 worker = self._analysis_workers.get(active_path)
                 if worker is not None and worker.isInterruptionRequested():
-                    self.analysis_button.setText("중지 중")
-                    self.analysis_button.set_icon("stop-circle-outline")
-                    self.analysis_button.set_tone("neutral")
-                    self.analysis_button.setToolTip("현재 프레임 처리 후 분석을 중지합니다.")
-                    self.analysis_button.setEnabled(False)
-                elif worker is not None:
-                    self.analysis_button.setText("분석 정지")
-                    self.analysis_button.set_icon("stop-circle-outline")
-                    self.analysis_button.set_tone("error")
-                    self.analysis_button.setToolTip("현재 분석 중지")
-                    self.analysis_button.setEnabled(True)
-                else:
-                    self.analysis_button.setText("준비 중")
-                    self.analysis_button.set_icon("play-circle-outline")
-                    self.analysis_button.set_tone("neutral")
-                    self.analysis_button.setToolTip(
-                        "GPT API 설정과 분석 준비 상태를 확인하는 중입니다."
+                    self._configure_analysis_actions(
+                        text="중지 중",
+                        home_text="중지 중",
+                        icon="stop-circle-outline",
+                        tone="neutral",
+                        tooltip="현재 프레임 처리 후 분석을 중지합니다.",
+                        enabled=False,
                     )
-                    self.analysis_button.setEnabled(False)
+                elif worker is not None:
+                    self._configure_analysis_actions(
+                        text="분석 정지",
+                        home_text="분석 정지",
+                        icon="stop-circle-outline",
+                        tone="error",
+                        tooltip="현재 분석 중지",
+                        enabled=True,
+                    )
+                else:
+                    self._configure_analysis_actions(
+                        text="준비 중",
+                        home_text="준비 중",
+                        icon="play-circle-outline",
+                        tone="neutral",
+                        tooltip="GPT API 설정과 분석 준비 상태를 확인하는 중입니다.",
+                        enabled=False,
+                    )
             else:
-                self.analysis_button.setText("분석 중")
-                self.analysis_button.set_icon("play-circle-outline")
-                self.analysis_button.set_tone("neutral")
-                self.analysis_button.setToolTip("한 번에 한 영상만 분석합니다.")
-                self.analysis_button.setEnabled(False)
+                self._configure_analysis_actions(
+                    text="분석 중",
+                    home_text="분석 중",
+                    icon="play-circle-outline",
+                    tone="neutral",
+                    tooltip="한 번에 한 영상만 분석합니다.",
+                    enabled=False,
+                )
         elif selected_path is not None:
-            self.analysis_button.setText("분석 시작")
-            self.analysis_button.set_icon("play-circle-outline")
-            self.analysis_button.set_tone("primary")
-            self.analysis_button.setToolTip("선택한 영상 분석 시작")
-            self.analysis_button.setEnabled(True)
+            self._configure_analysis_actions(
+                text="분석 시작",
+                home_text="분석",
+                icon="play-circle-outline",
+                tone="primary",
+                home_tone="neutral" if self._last_result is not None else "primary",
+                tooltip="선택한 영상 분석 시작",
+                enabled=True,
+            )
         else:
-            self.analysis_button.setText("분석 시작")
-            self.analysis_button.set_icon("play-circle-outline")
-            self.analysis_button.set_tone("neutral")
-            self.analysis_button.setToolTip("왼쪽 영상 목록에서 항목을 선택하세요.")
-            self.analysis_button.setEnabled(False)
+            self._configure_analysis_actions(
+                text="분석 시작",
+                home_text="분석",
+                icon="play-circle-outline",
+                tone="neutral",
+                tooltip="영상을 먼저 업로드하세요.",
+                enabled=False,
+            )
 
         for path, card in self._analysis_cards.items():
             if path == self._pending_analysis_path:
                 card.set_preparing()
         self.save_report_button.setEnabled(self._last_result is not None)
+        self._sync_home_steps()
 
     def _log(self, message: str) -> None:
         self.log_panel.append(message)
