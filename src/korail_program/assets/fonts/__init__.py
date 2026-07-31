@@ -1,2 +1,1 @@
 """Bundled font assets."""
-

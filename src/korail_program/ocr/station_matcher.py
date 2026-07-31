@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-import re
 
 _TEXT_CLEAN_RE = re.compile(r"[^0-9A-Za-z가-힣]+")
 

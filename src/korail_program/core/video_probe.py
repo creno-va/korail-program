@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from korail_program.core.models import VideoMetadata
 
 
-def build_ffprobe_command(file_path: str | Path, *, ffprobe_path: str | Path = "ffprobe") -> list[str]:
+def build_ffprobe_command(
+    file_path: str | Path, *, ffprobe_path: str | Path = "ffprobe"
+) -> list[str]:
     return [
         str(ffprobe_path),
         "-v",
@@ -22,7 +24,9 @@ def build_ffprobe_command(file_path: str | Path, *, ffprobe_path: str | Path = "
     ]
 
 
-def probe_video(file_path: str | Path, *, video_id: int = 0, ffprobe_path: str | Path = "ffprobe") -> VideoMetadata:
+def probe_video(
+    file_path: str | Path, *, video_id: int = 0, ffprobe_path: str | Path = "ffprobe"
+) -> VideoMetadata:
     result = subprocess.run(
         build_ffprobe_command(file_path, ffprobe_path=ffprobe_path),
         check=True,
@@ -60,4 +64,3 @@ def _parse_rate(value: str | None) -> float:
     if denominator_number == 0:
         return 0.0
     return float(numerator) / denominator_number
-

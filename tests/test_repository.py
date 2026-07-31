@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from korail_program.db.repository import AnalysisRepository, connect
 
@@ -23,7 +23,9 @@ class RepositoryTests(unittest.TestCase):
                     fps=30,
                 )
 
-                row = connection.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
+                row = connection.execute(
+                    "SELECT * FROM videos WHERE id = ?", (video_id,)
+                ).fetchone()
             finally:
                 connection.close()
 

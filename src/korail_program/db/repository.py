@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
-import sqlite3
 
-from korail_program.core.models import AnalysisEvent, JudgeObservation, OcrObservation, SectionMapping
+from korail_program.core.models import (
+    AnalysisEvent,
+    JudgeObservation,
+    OcrObservation,
+    SectionMapping,
+)
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from korail_program.core.frame_extractor import FrameExtractionConfig, build_ffmpeg_frame_command
 
@@ -30,4 +30,3 @@ class FrameExtractorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

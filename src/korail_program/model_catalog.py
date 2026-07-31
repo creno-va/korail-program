@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import ctypes
 import os
 import platform
 import subprocess
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)

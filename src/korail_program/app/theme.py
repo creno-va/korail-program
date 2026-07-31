@@ -6,154 +6,229 @@ APP_STYLESHEET = """
 * {
     font-family: "Pretendard GOV", "Pretendard", "Malgun Gothic", "Segoe UI", sans-serif;
     font-size: 13px;
-    color: #1f2328;
+    color: #191f28;
     letter-spacing: 0px;
 }
 
 QMainWindow,
 QWidget {
-    background: #f5f6f8;
+    background: #f9fafb;
 }
 
 QLabel {
     background: transparent;
 }
 
-QFrame#Panel,
-QFrame#Inspector,
-QFrame#TextPanel,
-QLabel#CaptureBox {
+QFrame#WorkPanel,
+QFrame#TextPanel {
     background: #ffffff;
     border: none;
-    border-radius: 8px;
+    border-radius: 0px;
 }
 
 QFrame#LeftRail {
-    background: #f5f6f8;
+    background: #f2f4f6;
     border: none;
 }
 
-QFrame#MetricCard,
+QFrame#ResultsRail {
+    background: #f2f4f6;
+    border: none;
+}
+
 QFrame#EmptyState {
-    background: #f0f2f5;
-    border: none;
-    border-radius: 8px;
-}
-
-QFrame#WorkflowCard,
-QFrame#ModelCard {
-    background: #f0f2f5;
-    border: none;
-    border-radius: 8px;
-}
-
-QFrame#Divider {
-    background: #dfe3e8;
-    border: none;
-    min-height: 1px;
-    max-height: 1px;
-}
-
-QFrame#QueueCard,
-QFrame#StatusRow,
-QFrame#EventCard {
     background: #ffffff;
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
+}
+
+QFrame#ModelCard,
+QFrame#SidebarSettings {
+    background: #ffffff;
+    border: none;
+    border-radius: 12px;
+}
+
+QFrame#StatisticsPanel {
+    background: #ffffff;
+    border: none;
+    border-radius: 14px;
+}
+
+QFrame#StatTile {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+}
+
+QFrame#AnalysisBlock {
+    background: #f2f4f6;
+    border: none;
+    border-radius: 14px;
+}
+
+QFrame#DetailBlock {
+    background: #f9fafb;
+    border: none;
+    border-radius: 14px;
+}
+
+QFrame#FlatSection,
+QWidget#WorkScrollContent,
+QScrollArea#WorkScroll,
+QScrollArea#WorkScroll > QWidget > QWidget {
+    background: #ffffff;
+    border: none;
+}
+
+QLabel#StatValue {
+    font-size: 22px;
+    font-weight: 700;
+    color: #191f28;
+}
+
+QFrame#StatusRow,
+QFrame#EventCard {
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+}
+
+QFrame#EventCard {
+    background: #ffffff;
 }
 
 QDialog {
-    background: #f5f6f8;
+    background: #f9fafb;
 }
 
 QFrame#SelectableCard {
     background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 0px;
 }
 
 QFrame#SelectableCard:hover {
-    background: #eceff3;
+    background: #e5e8eb;
 }
 
 QFrame#SelectableCard[selected="true"] {
-    background: #e6e9ee;
+    background: #dfe3e8;
 }
 
 QSplitter#WorkspaceSplitter::handle {
-    background: #dfe3e8;
-    margin: 8px 10px;
+    background: #d1d6db;
+    margin: 0px;
     width: 1px;
 }
 
 QLabel#SectionTitle {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
+}
+
+QLabel#PageTitle {
+    font-size: 22px;
+    font-weight: 700;
+    color: #191f28;
 }
 
 QLabel#CardTitle {
     font-weight: 700;
+    color: #333d4b;
 }
 
 QLabel#Muted {
-    color: #6c737f;
+    color: #8b95a1;
+    font-size: 12px;
 }
 
 QLabel#Tiny {
-    color: #6c737f;
-    font-size: 11px;
+    color: #8b95a1;
+    font-size: 12px;
 }
 
 QLabel#PanelText {
-    color: #343941;
+    color: #4e5968;
     line-height: 145%;
 }
 
-QLabel#ButtonText {
+QLabel#ModelName {
+    color: #333d4b;
     font-weight: 700;
+    padding: 0px;
+}
+
+QLabel#ButtonText {
+    font-size: 13px;
+    font-weight: 600;
 }
 
 QLineEdit#TokenInput {
     background: #ffffff;
-    border: 1px solid #dfe3e8;
-    border-radius: 7px;
-    padding: 9px 10px;
-    selection-background-color: #dfe4ea;
+    border: 1px solid #e5e8eb;
+    border-radius: 10px;
+    padding: 10px 12px;
+    selection-background-color: #e8f3ff;
 }
 
 QLineEdit#TokenInput:focus {
-    border: 1px solid #9aa3af;
+    border: 1px solid #3182f6;
 }
 
 QFrame#ActionButton {
-    background: #e9edf2;
+    background: #e5e8eb;
     border: none;
-    border-radius: 7px;
+    border-radius: 10px;
 }
 
 QFrame#ActionButton:hover {
-    background: #dfe4ea;
+    background: #d1d6db;
 }
 
+QFrame#ActionButton[compact="true"] {
+    background: transparent;
+}
+
+QFrame#ActionButton[compact="true"]:hover {
+    background: #d1d6db;
+}
+
+QFrame#ActionButton[tone="primary"],
 QFrame#ActionButton[tone="success"] {
-    background: #dff3e8;
+    background: #3182f6;
+}
+
+QFrame#ActionButton[tone="primary"]:hover,
+QFrame#ActionButton[tone="success"]:hover {
+    background: #1b64da;
+}
+
+QFrame#ActionButton[tone="primary"] QLabel,
+QFrame#ActionButton[tone="success"] QLabel,
+QFrame#ActionButton[tone="error"] QLabel {
+    color: #ffffff;
 }
 
 QFrame#ActionButton[tone="warning"] {
-    background: #fff0cc;
+    background: #fff4e5;
 }
 
 QFrame#ActionButton[tone="error"] {
-    background: #f8d7da;
+    background: #f04452;
+}
+
+QFrame#ActionButton[tone="error"]:hover {
+    background: #d33b4c;
 }
 
 QFrame#ActionButton[disabled="true"] {
-    background: #eff1f4;
+    background: #f2f4f6;
 }
 
 QFrame#ActionButton[disabled="true"] QLabel {
-    color: #9aa1aa;
+    color: #8b95a1;
 }
 
 QFrame#CardList {
@@ -187,7 +262,7 @@ QScrollBar:vertical {
 }
 
 QScrollBar::handle:vertical {
-    background: #c9ced6;
+    background: #b0b8c1;
     border-radius: 4px;
     min-height: 32px;
 }
@@ -202,46 +277,125 @@ QScrollBar::sub-page:vertical {
 }
 
 QFrame#ProgressTrackBar {
-    background: #e3e7ed;
+    background: #dfe3e8;
     border: none;
     border-radius: 4px;
 }
 
 QFrame#ProgressTrackChunk {
-    background: #9aa3af;
+    background: #8b95a1;
     border: none;
     border-radius: 4px;
 }
 
+QFrame#ProgressTrackChunk[tone="primary"],
 QFrame#ProgressTrackChunk[tone="success"] {
-    background: #2f8f5b;
+    background: #3182f6;
+}
+
+QFrame#VideoPlayer {
+    background: #ffffff;
+    border: none;
+}
+
+QFrame#VideoSurfaceFrame,
+QFrame#VideoDisplay,
+QVideoWidget#VideoSurface,
+QLabel#VideoPlaceholder {
+    background: #17191c;
+    color: #b0b8c1;
+    border: none;
+    border-radius: 16px;
+}
+
+QFrame#VideoControlsOverlay {
+    background: rgba(17, 19, 22, 220);
+    border: none;
+    border-radius: 10px;
+    margin: 0px 12px 12px 12px;
+}
+
+QFrame#VideoControlsOverlay QFrame#ActionButton {
+    background: transparent;
+}
+
+QFrame#VideoControlsOverlay QFrame#ActionButton:hover {
+    background: rgba(255, 255, 255, 28);
+}
+
+QFrame#VideoControlsOverlay QLabel#ButtonText,
+QLabel#VideoTimeLabel {
+    color: #ffffff;
+}
+
+QLabel#FrameThumbnail {
+    background: #e5e8eb;
+    color: #8b95a1;
+    border: none;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+QSlider#VideoSeekSlider {
+    background: transparent;
+    min-height: 12px;
+    max-height: 12px;
+}
+
+QSlider#VideoSeekSlider::groove:horizontal {
+    height: 5px;
+    background: #d1d6db;
+    border-radius: 2px;
+}
+
+QFrame#VideoControlsOverlay QSlider#VideoSeekSlider::groove:horizontal {
+    height: 3px;
+    background: rgba(255, 255, 255, 95);
+    border-radius: 1px;
+}
+
+QSlider#VideoSeekSlider::sub-page:horizontal {
+    background: #3182f6;
+    border-radius: 2px;
+}
+
+QSlider#VideoSeekSlider::handle:horizontal {
+    background: #3182f6;
+    width: 10px;
+    margin: -4px 0;
+    border-radius: 5px;
 }
 
 QFrame#ProgressTrackChunk[tone="warning"] {
-    background: #c68a00;
+    background: #f59f00;
 }
 
 QFrame#ProgressTrackChunk[tone="error"] {
-    background: #b42318;
+    background: #f04452;
 }
 
 QLabel#Tiny[tone="success"] {
-    color: #0f5132;
+    color: #008f6a;
+}
+
+QLabel#Tiny[tone="primary"] {
+    color: #1b64da;
 }
 
 QLabel#Tiny[tone="warning"] {
-    color: #7a4f00;
+    color: #b25d00;
 }
 
 QLabel#Tiny[tone="error"] {
-    color: #842029;
+    color: #d33b4c;
 }
 """
 
 
 STATUS_COLORS = {
-    "neutral": ("#eef1f5", "#5f6672", "#eef1f5"),
-    "success": ("#dff3e8", "#0f5132", "#dff3e8"),
-    "warning": ("#fff0cc", "#7a4f00", "#fff0cc"),
-    "error": ("#f8d7da", "#842029", "#f8d7da"),
+    "neutral": ("#f2f4f6", "#6b7684", "#f2f4f6"),
+    "primary": ("#e8f3ff", "#1b64da", "#e8f3ff"),
+    "success": ("#e8f8f2", "#008f6a", "#e8f8f2"),
+    "warning": ("#fff4e5", "#b25d00", "#fff4e5"),
+    "error": ("#feecef", "#d33b4c", "#feecef"),
 }

@@ -1,6 +1,6 @@
 # Korail 지장수목 분석 프로그램
 
-철도 주행 영상에서 전차선로 주변 지장수목 의심 프레임을 샘플링하고, GPT vision VQA로 위험 후보를 판정해 캡처와 HTML/Markdown 리포트를 생성하는 데스크톱 프로그램입니다.
+철도 주행 영상에서 전차선로 주변 지장수목 의심 프레임을 샘플링하고, GPT vision VQA로 위험 후보를 판정해 캡처와 프레임별 PDF 리포트를 생성하는 데스크톱 프로그램입니다.
 
 Windows/macOS 납품판은 Python 개발 환경이 없는 PC에서도 설치 파일만으로 실행됩니다. 앱에는 PyInstaller 기반 실행 파일과 FFmpeg/FFprobe가 포함되며, 프레임 judge와 역명 OCR은 OpenAI GPT API를 사용합니다. Ollama나 로컬 모델 설치는 더 이상 필요하지 않습니다.
 
@@ -11,7 +11,7 @@ Windows/macOS 납품판은 Python 개발 환경이 없는 PC에서도 설치 파
 - 디자인: Pretendard GOV, Material Design Icons, grayscale + success/warning/error 상태색
 - 프레임 judge: OpenAI Responses API + vision-capable GPT model, 기본 `gpt-5.6-terra`
 - 역명/OCR: 기본 GPT VLM OCR + 선택적 역명 사전 보정
-- 결과: 캡처 이미지, HTML/Markdown 리포트, JSON 산출물
+- 결과: 캡처 이미지, 프레임별 PDF 리포트, HTML/Markdown 리포트, JSON 산출물
 
 ## API Key 설정
 
@@ -79,7 +79,7 @@ sh scripts/analyze_root_videos.sh
 - 모델: `gpt-5.6-terra`
 - VQA 샘플링 간격: 15초
 - 리포트 포함 기준: `low` 이상
-- 산출물: `output/analysis.../report.html`, `report.md`, `observations.json`, `events.json`, `captures/`
+- 산출물: `output/analysis.../report.pdf`, `report.html`, `report.md`, `observations.json`, `events.json`, `captures/`
 
 ## 설치 마법사 빌드
 

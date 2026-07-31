@@ -7,13 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor, QMouseEvent
+from PySide6.QtGui import QCursor, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -76,20 +75,23 @@ class ActionButton(QFrame):
         icon_name: str | None = None,
         tone: str = "neutral",
         compact: bool = False,
+        small: bool = False,
     ) -> None:
         super().__init__()
         self._enabled = True
         self._tone = tone
+        self._icon_name = icon_name
         self._icon_label: QLabel | None = None
         self._text_label = QLabel(text)
         self._text_label.setObjectName("ButtonText")
         self.setObjectName("ActionButton")
         self.setProperty("tone", tone)
         self.setProperty("compact", compact)
+        self.setProperty("small", small)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.setFixedHeight(40)
+        self.setFixedHeight(36 if small else 40)
         if compact:
-            self.setFixedWidth(42)
+            self.setFixedWidth(40)
         self._build_ui(icon_name=icon_name, compact=compact)
 
     def _build_ui(self, *, icon_name: str | None, compact: bool) -> None:
@@ -108,14 +110,22 @@ class ActionButton(QFrame):
     def setText(self, text: str) -> None:  # noqa: N802
         self._text_label.setText(text)
 
+    def text(self) -> str:
+        return self._text_label.text()
+
     def set_icon(self, icon_name: str) -> None:
+        self._icon_name = icon_name
         if self._icon_label is None:
             return
-        self._icon_label.setPixmap(material_icon(icon_name).pixmap(QSize(18, 18)))
+        self._icon_label.setPixmap(
+            material_icon(icon_name, color=self._current_icon_color()).pixmap(QSize(18, 18))
+        )
 
     def set_tone(self, tone: str) -> None:
         self._tone = tone
         self.setProperty("tone", tone)
+        if self._icon_name:
+            self.set_icon(self._icon_name)
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -126,8 +136,17 @@ class ActionButton(QFrame):
         self.setCursor(
             QCursor(Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor)
         )
+        if self._icon_name:
+            self.set_icon(self._icon_name)
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def _current_icon_color(self) -> str:
+        if not self._enabled:
+            return "#8b95a1"
+        if self._tone in {"primary", "success", "error", "overlay"}:
+            return "#ffffff"
+        return "#333d4b"
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self._enabled and event.button() == Qt.MouseButton.LeftButton:
@@ -246,60 +265,15 @@ class ProgressTrack(QWidget):
         return self._value
 
 
-class QueueCard(QFrame):
+class VideoListCard(QFrame):
     remove_requested = Signal()
 
     def __init__(self, queue_file: QueueFile) -> None:
         super().__init__()
         self.queue_file = queue_file
-        self.status_chip = StatusChip(queue_file.status, "neutral")
-        self.remove_button = ActionButton("", icon_name="trash-can-outline", compact=True)
-        self.remove_button.setToolTip("목록에서 제거")
-        self.setObjectName("QueueCard")
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
-
-        top = QHBoxLayout()
-        name = QLabel(self.queue_file.display_name)
-        name.setObjectName("CardTitle")
-        name.setWordWrap(True)
-        top.addWidget(name, stretch=1)
-        top.addWidget(self.status_chip)
-        top.addWidget(self.remove_button)
-        self.remove_button.clicked.connect(self.remove_requested.emit)
-
-        meta = QLabel(f"{self.queue_file.size_label} / {self.queue_file.path.suffix.lower()}")
-        meta.setObjectName("Tiny")
-        meta.setWordWrap(True)
-
-        layout.addLayout(top)
-        layout.addWidget(meta)
-
-    def set_status(self, status: str, tone: str) -> None:
-        self.status_chip.setText(status)
-        self.status_chip.set_tone(tone)
-
-
-class AnalysisStatusCard(QFrame):
-    start_requested = Signal()
-    stop_requested = Signal()
-    remove_requested = Signal()
-
-    def __init__(self, queue_file: QueueFile) -> None:
-        super().__init__()
-        self.queue_file = queue_file
-        self._run_mode = "start"
+        self.stage_text = "분석 대기"
+        self.progress_value = 0
         self.status_chip = StatusChip("대기", "neutral")
-        self.stage_label = QLabel("분석 대기")
-        self.stage_label.setObjectName("Muted")
-        self.progress = ProgressTrack()
-        self._start_tooltip = "이 영상 분석 시작"
-        self.run_button = ActionButton("시작", icon_name="play-circle-outline")
-        self.run_button.setToolTip(self._start_tooltip)
         self.remove_button = ActionButton("", icon_name="trash-can-outline", compact=True)
         self.remove_button.setToolTip("목록에서 제거")
         self.setObjectName("StatusRow")
@@ -307,116 +281,102 @@ class AnalysisStatusCard(QFrame):
         self.set_idle()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 8, 8, 8)
         layout.setSpacing(8)
 
-        top = QHBoxLayout()
         title = QLabel(self.queue_file.display_name)
         title.setObjectName("CardTitle")
-        title.setWordWrap(True)
-        top.addWidget(title, stretch=1)
-        top.addWidget(self.status_chip)
-        top.addWidget(self.run_button)
-        top.addWidget(self.remove_button)
-        self.run_button.clicked.connect(self._run_requested)
+        title.setToolTip(str(self.queue_file.path))
+        layout.addWidget(title, stretch=1)
+        layout.addWidget(self.status_chip)
+        layout.addWidget(self.remove_button)
         self.remove_button.clicked.connect(self.remove_requested.emit)
-
-        meta = QHBoxLayout()
-        meta.addWidget(self.stage_label, stretch=1)
-        size_label = QLabel(self.queue_file.size_label)
-        size_label.setObjectName("Tiny")
-        meta.addWidget(size_label)
-
-        layout.addLayout(top)
-        layout.addLayout(meta)
-        layout.addWidget(self.progress)
 
     def set_state(self, status: str, tone: str, stage: str, progress: int) -> None:
         self.status_chip.setText(status)
         self.status_chip.set_tone(tone)
-        self.stage_label.setText(stage)
-        self.progress.setValue(progress)
-        self.progress.set_tone(tone)
+        self.stage_text = stage
+        self.progress_value = max(0, min(100, progress))
 
     def set_idle(self) -> None:
-        self._run_mode = "start"
-        self._start_tooltip = "이 영상 분석 시작"
-        self.run_button.setText("시작")
-        self.run_button.set_icon("play-circle-outline")
-        self.run_button.setToolTip(self._start_tooltip)
-        self.run_button.setEnabled(True)
+        self.status_chip.setText("대기")
+        self.status_chip.set_tone("neutral")
+        self.stage_text = "분석 대기"
+        self.progress_value = 0
         self.remove_button.setEnabled(True)
 
     def set_preparing(self) -> None:
-        self._run_mode = "start"
-        self._start_tooltip = "분석 준비 중"
-        self.run_button.setText("준비")
-        self.run_button.set_icon("progress-clock")
-        self.run_button.setToolTip(self._start_tooltip)
-        self.run_button.setEnabled(False)
+        self.set_state("준비", "primary", "분석 환경 확인 중", 5)
         self.remove_button.setEnabled(False)
 
     def set_running(self) -> None:
-        self._run_mode = "stop"
-        self.run_button.setText("중지")
-        self.run_button.set_icon("stop-circle-outline")
-        self.run_button.setToolTip("이 영상 분석 중지")
-        self.run_button.setEnabled(True)
+        self.status_chip.setText("분석 중")
+        self.status_chip.set_tone("primary")
         self.remove_button.setEnabled(False)
 
     def set_stopping(self) -> None:
-        self.run_button.setText("중지 중")
-        self.run_button.setEnabled(False)
+        self.status_chip.setText("중지 중")
+        self.status_chip.set_tone("warning")
         self.remove_button.setEnabled(False)
 
     def set_finished(self) -> None:
-        self._run_mode = "start"
-        self._start_tooltip = "이 영상 다시 분석"
-        self.run_button.setText("다시")
-        self.run_button.set_icon("replay")
-        self.run_button.setToolTip(self._start_tooltip)
-        self.run_button.setEnabled(True)
         self.remove_button.setEnabled(True)
-
-    def set_start_available(self, enabled: bool, *, disabled_reason: str) -> None:
-        if self._run_mode != "start":
-            return
-        self.run_button.setEnabled(enabled)
-        self.run_button.setToolTip(self._start_tooltip if enabled else disabled_reason)
-
-    def _run_requested(self) -> None:
-        if self._run_mode == "stop":
-            self.stop_requested.emit()
-            return
-        self.start_requested.emit()
 
 
 class EventCard(QFrame):
-    def __init__(self, event_payload: dict[str, Any], *, video_name: str) -> None:
+    def __init__(
+        self,
+        event_payload: dict[str, Any],
+        *,
+        video_name: str,
+        capture_path: Path | None = None,
+    ) -> None:
         super().__init__()
         self.payload = event_payload
         self.setObjectName("EventCard")
-        self._build_ui(video_name=video_name)
+        self._build_ui(video_name=video_name, capture_path=capture_path)
 
-    def _build_ui(self, *, video_name: str) -> None:
+    def _build_ui(self, *, video_name: str, capture_path: Path | None) -> None:
         risk = RiskLevel.coerce(self.payload.get("risk_level"))
         start_ms = int(self.payload.get("start_time_ms", 0))
         end_ms = int(self.payload.get("end_time_ms", 0))
-        section = f"{self.payload.get('section_start', '구간 미확인')} ~ {self.payload.get('section_end', '구간 미확인')}"
+        frame_time_ms = int(self.payload.get("frame_time_ms", start_ms))
+        section_start = self.payload.get("section_start", "구간 미확인")
+        section_end = self.payload.get("section_end", "구간 미확인")
+        section = f"{section_start} ~ {section_end}"
 
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(7)
+        layout.setSpacing(10)
+
+        thumbnail = QLabel("프레임")
+        thumbnail.setObjectName("FrameThumbnail")
+        thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        thumbnail.setFixedSize(112, 72)
+        if capture_path is not None and capture_path.exists():
+            pixmap = QPixmap(str(capture_path))
+            if not pixmap.isNull():
+                thumbnail.setPixmap(
+                    pixmap.scaled(
+                        thumbnail.size(),
+                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+        layout.addWidget(thumbnail)
+
+        content = QVBoxLayout()
+        content.setSpacing(5)
 
         top = QHBoxLayout()
-        title = QLabel(video_name)
+        title = QLabel(format_timecode(frame_time_ms))
         title.setObjectName("CardTitle")
         title.setWordWrap(True)
         top.addWidget(title, stretch=1)
         top.addWidget(StatusChip(risk.value, _tone_for_risk(risk)))
 
-        meta = QLabel(f"{format_timecode(start_ms)} - {format_timecode(end_ms)} / {section}")
+        meta = QLabel(f"{video_name} · {format_timecode(end_ms)}까지\n{section}")
         meta.setObjectName("Tiny")
         meta.setWordWrap(True)
 
@@ -424,9 +384,10 @@ class EventCard(QFrame):
         summary.setObjectName("PanelText")
         summary.setWordWrap(True)
 
-        layout.addLayout(top)
-        layout.addWidget(meta)
-        layout.addWidget(summary)
+        content.addLayout(top)
+        content.addWidget(meta)
+        content.addWidget(summary)
+        layout.addLayout(content, stretch=1)
 
 
 class EmptyState(QFrame):
@@ -523,6 +484,7 @@ class CardList(QFrame):
             item = self.content_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.setParent(None)
                 widget.deleteLater()
         self.content_layout.addStretch(1)
         self._empty = None
@@ -620,14 +582,6 @@ class CardList(QFrame):
             event.acceptProposedAction()
             return
         super().dropEvent(event)
-
-
-def horizontal_divider() -> QFrame:
-    line = QFrame()
-    line.setObjectName("Divider")
-    line.setFrameShape(QFrame.Shape.NoFrame)
-    line.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-    return line
 
 
 def _tone_for_risk(risk: RiskLevel) -> str:

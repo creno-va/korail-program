@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import math
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
-import json
-import math
 from pathlib import Path
-import shutil
 
 from korail_program.analysis.report import write_reports
 from korail_program.config import (
@@ -31,6 +31,7 @@ from korail_program.core.models import (
     to_jsonable,
 )
 from korail_program.core.timecode import format_timecode
+from korail_program.core.video_files import discover_video_files
 from korail_program.core.video_probe import probe_video
 from korail_program.judge.openai_client import (
     OpenAIApiError,
@@ -43,7 +44,6 @@ from korail_program.ocr.station_dictionary import load_station_names
 from korail_program.ocr.station_matcher import StationMatcher
 from korail_program.ocr.vlm_ocr_engine import VlmStationOcrEngine
 
-VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 MAX_CONSECUTIVE_JUDGE_FAILURES = 3
 
 
@@ -65,7 +65,7 @@ class BatchAnalysisConfig:
     ocr_backend: str = "vlm"
     ocr_interval_s: float | None = DEFAULT_OCR_INTERVAL_SEC
     station_dictionary_path: Path | None = None
-    progress_callback: Callable[["BatchAnalysisProgress"], None] | None = None
+    progress_callback: Callable[[BatchAnalysisProgress], None] | None = None
     cancel_callback: Callable[[], bool] | None = None
 
 
@@ -88,6 +88,7 @@ class BatchAnalysisResult:
     output_dir: Path
     report_markdown: Path
     report_html: Path
+    report_pdf: Path
     observations_json: Path
     events_json: Path
     video_count: int
@@ -139,7 +140,9 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
     station_matcher = _create_station_matcher(config)
     interval_ms = int(round(config.interval_s * 1000))
     ocr_interval_ms = (
-        int(round(config.ocr_interval_s * 1000)) if config.ocr_interval_s is not None else interval_ms
+        int(round(config.ocr_interval_s * 1000))
+        if config.ocr_interval_s is not None
+        else interval_ms
     )
     ocr_every_n_frames = max(1, int(round(ocr_interval_ms / interval_ms)))
     sampled_frame_count = 0
@@ -216,6 +219,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     )
                     if ocr_observation is not None:
                         ocr_observations.append(ocr_observation)
+                except AnalysisCancelled:
+                    raise
                 except Exception as exc:  # noqa: BLE001
                     failures.append(
                         _failure_record(
@@ -237,6 +242,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     video_time_ms=video_time_ms,
                     text=raw_response,
                 )
+            except AnalysisCancelled:
+                raise
             except Exception as exc:  # noqa: BLE001
                 error_text = _error_text(exc)
                 failures.append(
@@ -250,7 +257,10 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     )
                 )
                 consecutive_judge_failures += 1
-                if _is_model_failure(exc) and consecutive_judge_failures >= MAX_CONSECUTIVE_JUDGE_FAILURES:
+                if (
+                    _is_model_failure(exc)
+                    and consecutive_judge_failures >= MAX_CONSECUTIVE_JUDGE_FAILURES
+                ):
                     failure_summary = _model_failure_summary(error_text)
                     failures.append(
                         _failure_record(
@@ -262,18 +272,6 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                             error=failure_summary,
                         )
                     )
-                    processed_frame_count += 1
-                    _emit_frame_progress(
-                        config,
-                        video_path=video_path,
-                        video_index=video_id,
-                        video_count=len(videos),
-                        frame_index=frame_index,
-                        frame_count=len(frames),
-                        processed_frame_count=processed_frame_count,
-                        total_frame_count=estimated_total_frames,
-                    )
-                    break
                 processed_frame_count += 1
                 _emit_frame_progress(
                     config,
@@ -285,6 +283,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
                     processed_frame_count=processed_frame_count,
                     total_frame_count=estimated_total_frames,
                 )
+                if failure_summary:
+                    break
                 continue
             consecutive_judge_failures = 0
 
@@ -382,7 +382,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         json.dumps([to_jsonable(event) for event in events], ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    report_markdown, report_html = write_reports(
+    report_markdown, report_html, report_pdf = write_reports(
         output_dir=output_dir,
         video_count=len(videos),
         sampled_frame_count=sampled_frame_count,
@@ -397,6 +397,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         output_dir=output_dir,
         report_markdown=report_markdown,
         report_html=report_html,
+        report_pdf=report_pdf,
         observations_json=observations_json,
         events_json=events_json,
         video_count=len(videos),
@@ -408,24 +409,6 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         aborted=failure_summary is not None and not records,
         failure_summary=failure_summary,
     )
-
-
-def discover_video_files(inputs: list[Path], *, recursive: bool = False) -> list[Path]:
-    candidates = inputs or [Path.cwd()]
-    videos: list[Path] = []
-    for candidate in candidates:
-        if _has_wildcard(candidate):
-            matches = candidate.parent.glob(candidate.name)
-            videos.extend(path for path in matches if _is_video(path))
-            continue
-        if candidate.is_file() and _is_video(candidate):
-            videos.append(candidate)
-            continue
-        if candidate.is_dir():
-            pattern = "**/*" if recursive else "*"
-            videos.extend(path for path in candidate.glob(pattern) if _is_video(path))
-
-    return sorted({path.resolve() for path in videos})
 
 
 def _error_text(exc: Exception) -> str:
@@ -687,7 +670,9 @@ def _build_section_mappings(
         unique = _deduplicate_station_observations(observations)
         if len(unique) == 1:
             only = unique[0]
-            end_time_ms = duration_by_video.get(video_id, 0) or only.video_time_ms + sample_interval_ms
+            end_time_ms = (
+                duration_by_video.get(video_id, 0) or only.video_time_ms + sample_interval_ms
+            )
             sections.append(
                 SectionMapping(
                     video_id=video_id,
@@ -741,7 +726,9 @@ def _resolve_output_dir(output_dir: Path) -> Path:
     return resolved.resolve()
 
 
-def _probe_or_default(video_path: Path, *, video_id: int, config: BatchAnalysisConfig) -> VideoMetadata:
+def _probe_or_default(
+    video_path: Path, *, video_id: int, config: BatchAnalysisConfig
+) -> VideoMetadata:
     try:
         return probe_video(video_path, video_id=video_id, ffprobe_path=config.ffprobe_path)
     except Exception:  # noqa: BLE001
@@ -816,11 +803,3 @@ def _config_payload(config: BatchAnalysisConfig) -> dict[str, object]:
         if config.station_dictionary_path
         else None,
     }
-
-
-def _has_wildcard(path: Path) -> bool:
-    return any(char in str(path) for char in "*?[")
-
-
-def _is_video(path: Path) -> bool:
-    return path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS

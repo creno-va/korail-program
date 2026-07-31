@@ -36,4 +36,3 @@ def parse_timecode(value: str) -> int:
         raise ValueError(f"Invalid timecode: {value!r}")
 
     return ((hours * 60 + minutes) * 60 + seconds) * 1000 + millis
-

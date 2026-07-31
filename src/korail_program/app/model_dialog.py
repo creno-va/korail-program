@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from korail_program.app.widgets import ActionButton, StatusChip, horizontal_divider
+from korail_program.app.widgets import ActionButton, StatusChip
 from korail_program.config import DEFAULT_OPENAI_BASE_URL
 from korail_program.judge.openai_client import OpenAIApiError, test_openai_connection
 from korail_program.model_catalog import (
@@ -49,8 +49,8 @@ class ModelSettingsDialog(QDialog):
 
     def _build_ui(self, *, api_key: str) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(12)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(16)
 
         header = QHBoxLayout()
         title = QLabel("GPT API 설정")
@@ -59,13 +59,12 @@ class ModelSettingsDialog(QDialog):
         header.addStretch(1)
         header.addWidget(StatusChip(system_profile_label(self.profile), "neutral"))
         root.addLayout(header)
-        root.addWidget(horizontal_divider())
 
         api_card = QFrame()
         api_card.setObjectName("ModelCard")
         api_layout = QVBoxLayout(api_card)
-        api_layout.setContentsMargins(12, 12, 12, 12)
-        api_layout.setSpacing(8)
+        api_layout.setContentsMargins(16, 16, 16, 16)
+        api_layout.setSpacing(12)
 
         api_top = QHBoxLayout()
         api_title = QLabel("API key")
@@ -74,7 +73,7 @@ class ModelSettingsDialog(QDialog):
         self.model_value_label.setObjectName("Tiny")
         api_top.addWidget(api_title)
         api_top.addStretch(1)
-        api_top.addWidget(StatusChip(self.current_model, "success"))
+        api_top.addWidget(StatusChip(self.current_model, "primary"))
 
         self.api_key_input = QLineEdit()
         self.api_key_input.setObjectName("TokenInput")
@@ -82,7 +81,9 @@ class ModelSettingsDialog(QDialog):
         self.api_key_input.setPlaceholderText("OPENAI_API_KEY 또는 sk-... 키를 입력하세요")
         self.api_key_input.setText(api_key)
 
-        api_help = QLabel("저장한 키는 이 PC의 앱 설정 파일에만 보관되며 릴리즈나 리포트에는 기록되지 않습니다.")
+        api_help = QLabel(
+            "저장한 키는 이 PC의 앱 설정 파일에만 보관되며 릴리즈나 리포트에는 기록되지 않습니다."
+        )
         api_help.setObjectName("Tiny")
         api_help.setWordWrap(True)
 
@@ -113,7 +114,7 @@ class ModelSettingsDialog(QDialog):
         close_button.clicked.connect(self.reject)
         test_button = ActionButton("연결 테스트", icon_name="lan-connect")
         test_button.clicked.connect(self._test_connection)
-        save_button = ActionButton("저장", icon_name="content-save-outline", tone="success")
+        save_button = ActionButton("저장", icon_name="content-save-outline", tone="primary")
         save_button.clicked.connect(self._save)
         footer.addStretch(1)
         footer.addWidget(close_button)
@@ -125,8 +126,8 @@ class ModelSettingsDialog(QDialog):
         card = QFrame()
         card.setObjectName("ModelCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         top = QHBoxLayout()
         name = QLabel(option.name)
@@ -136,7 +137,7 @@ class ModelSettingsDialog(QDialog):
         if option.tag == self.recommended.tag:
             top.addWidget(StatusChip("기본 추천", "success"))
         if option.tag == self.current_model:
-            top.addWidget(StatusChip("선택됨", "warning"))
+            top.addWidget(StatusChip("선택됨", "primary"))
         top.addStretch(1)
 
         meta = QLabel(f"{option.tag} / {option.size_label}")

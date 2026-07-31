@@ -1,2 +1,1 @@
 """Bundled application assets."""
-

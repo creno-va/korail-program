@@ -1,6 +1,6 @@
 [project]
 name = "korail-program"
-version = "0.6.2"
+version = "0.7.0"
 description = "Offline desktop analyzer for catenary obstruction tree events in rail cab videos."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,6 +8,7 @@ dependencies = [
     "certifi>=2025.10.5",
     "pyside6>=6.7",
     "qtawesome>=1.4.2",
+    "reportlab>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -16,7 +17,6 @@ processing = [
 ]
 reports = [
     "openpyxl>=3.1",
-    "reportlab>=4.2",
 ]
 ocr = [
     "paddleocr>=3.0",
@@ -27,10 +27,10 @@ inference = [
 full = [
     "opencv-python>=4.10",
     "openpyxl>=3.1",
-    "reportlab>=4.2",
     "requests>=2.32",
 ]
 dev = [
+    "pypdf>=5.0",
     "pytest>=8.3",
     "ruff>=0.8",
 ]
@@ -48,9 +48,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/korail_program"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/korail_program/assets/fonts" = "korail_program/assets/fonts"
 
 [tool.ruff]
 line-length = 100

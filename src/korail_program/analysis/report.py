@@ -19,7 +19,7 @@ def write_reports(
     failures: list[dict[str, object]],
     ocr_observation_count: int = 0,
     failure_summary: str | None = None,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     markdown_path = output_dir / "report.md"
     html_path = output_dir / "report.html"
     markdown_path.write_text(
@@ -49,7 +49,17 @@ def write_reports(
         + "\n",
         encoding="utf-8",
     )
-    return markdown_path, html_path
+    from korail_program.analysis.pdf_report import write_pdf_report
+
+    pdf_path = write_pdf_report(
+        output_dir=output_dir,
+        video_count=video_count,
+        sampled_frame_count=sampled_frame_count,
+        suspicious_records=suspicious_records,
+        events=events,
+        failures=failures,
+    )
+    return markdown_path, html_path, pdf_path
 
 
 def build_markdown_report(
@@ -78,8 +88,8 @@ def build_markdown_report(
 
     lines.extend(
         [
-        "## 이벤트 요약",
-        "",
+            "## 이벤트 요약",
+            "",
         ]
     )
     if not events:
@@ -191,7 +201,8 @@ def build_html_report(
       margin: 0;
       background: #f7f7f8;
       color: #202124;
-      font-family: -apple-system, BlinkMacSystemFont, "Pretendard GOV", "Pretendard", "Malgun Gothic", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard GOV", "Pretendard",
+        "Malgun Gothic", sans-serif;
       line-height: 1.5;
     }}
     main {{ max-width: 1180px; margin: 0 auto; padding: 32px 24px 48px; }}
@@ -209,13 +220,24 @@ def build_html_report(
       padding: 14px;
     }}
     .metric strong {{ display: block; margin-top: 4px; font-size: 22px; }}
-    table {{ width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }}
-    th, td {{ padding: 10px 12px; border-bottom: 1px solid #eef0f2; text-align: left; vertical-align: top; }}
+    table {{
+      width: 100%; border-collapse: collapse; background: #fff;
+      border-radius: 8px; overflow: hidden;
+    }}
+    th, td {{
+      padding: 10px 12px; border-bottom: 1px solid #eef0f2;
+      text-align: left; vertical-align: top;
+    }}
     th {{ background: #f1f2f4; font-weight: 700; }}
-    .frames {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }}
+    .frames {{
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+    }}
     .frame-card img {{ width: 100%; border-radius: 6px; background: #f1f2f4; }}
     .muted {{ color: #70757a; }}
-    .chip {{ display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; }}
+    .chip {{
+      display: inline-block; border-radius: 999px; padding: 2px 9px;
+      font-size: 12px; font-weight: 700;
+    }}
     .risk-high {{ background: #f8d7da; color: #842029; }}
     .risk-medium {{ background: #fff0cc; color: #7a4f00; }}
     .risk-low {{ background: #dff3e8; color: #0f5132; }}
@@ -281,7 +303,7 @@ def _frame_card(record: dict[str, object], *, output_dir: Path) -> str:
         '<article class="frame-card">'
         f'<img src="{image_src}" alt="candidate frame">'
         f"<h3>{escape(str(record['video_name']))}</h3>"
-        f"<p class=\"muted\">{format_timecode(observation.video_time_ms)}</p>"
+        f'<p class="muted">{format_timecode(observation.video_time_ms)}</p>'
         f"<p>{_risk_chip(observation.risk_level)}</p>"
         f"<p>{escape(observation.evidence or '-')}</p>"
         "</article>"

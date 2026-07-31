@@ -34,4 +34,3 @@ def _load_station_names_csv(path: Path) -> list[str]:
             if row and row[0].strip() and not row[0].lstrip().startswith("#"):
                 stations.append(row[0].strip())
     return stations
-

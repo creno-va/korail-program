@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from korail_program.analysis.batch import BatchAnalysisConfig, run_batch_analysis
 from korail_program.config import (
@@ -52,7 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument("--out", type=Path, default=Path("output") / "analysis")
     analyze.add_argument("--interval-sec", type=float, default=DEFAULT_ANALYSIS_INTERVAL_SEC)
-    analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL))
+    analyze.add_argument(
+        "--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL)
+    )
     analyze.add_argument(
         "--openai-base-url",
         default=os.environ.get("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
@@ -63,14 +65,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Environment variable that contains the OpenAI API key.",
     )
     analyze.add_argument("--route-hint")
-    analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH") or str(resolve_ffmpeg_executable()))
-    analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH") or str(resolve_ffprobe_executable()))
+    analyze.add_argument(
+        "--ffmpeg", default=os.environ.get("FFMPEG_PATH") or str(resolve_ffmpeg_executable())
+    )
+    analyze.add_argument(
+        "--ffprobe", default=os.environ.get("FFPROBE_PATH") or str(resolve_ffprobe_executable())
+    )
     analyze.add_argument("--max-width", type=int, default=DEFAULT_MAX_FRAME_WIDTH)
     analyze.add_argument(
         "--ocr-backend",
         choices=["vlm", "auto", "paddle", "none"],
         default=os.environ.get("KORAIL_OCR_BACKEND", "vlm"),
-        help="Station OCR backend. 'vlm' uses the configured GPT vision API and needs no OCR package.",
+        help=(
+            "Station OCR backend. 'vlm' uses the configured GPT vision API "
+            "and needs no OCR package."
+        ),
     )
     analyze.add_argument(
         "--ocr-interval-sec",
@@ -194,6 +203,7 @@ def _analyze_videos(args: argparse.Namespace) -> int:
         print(f"Failures: {result.failure_count}", file=sys.stderr)
     print(f"Report HTML: {result.report_html}")
     print(f"Report Markdown: {result.report_markdown}")
+    print(f"Report PDF: {result.report_pdf}")
     print(f"Observations JSON: {result.observations_json}")
     print(f"Events JSON: {result.events_json}")
     return 0

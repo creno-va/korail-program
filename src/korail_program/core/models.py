@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """Business-facing risk labels."""
 
     HIGH = "높음"
@@ -16,7 +16,7 @@ class RiskLevel(str, Enum):
     NONE = "없음"
 
     @classmethod
-    def coerce(cls, value: str | "RiskLevel" | None) -> "RiskLevel":
+    def coerce(cls, value: str | RiskLevel | None) -> RiskLevel:
         if isinstance(value, RiskLevel):
             return value
         if value is None:
@@ -54,7 +54,7 @@ class RiskLevel(str, Enum):
         }[self]
 
 
-class ReviewStatus(str, Enum):
+class ReviewStatus(StrEnum):
     """Manual review lifecycle for a detected event."""
 
     UNREVIEWED = "미확인"

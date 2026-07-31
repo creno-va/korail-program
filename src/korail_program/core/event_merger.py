@@ -103,7 +103,9 @@ def _event_from_group(
             return None
 
     section_start, section_end = resolve_event_section(start_time_ms, end_time_ms, sections)
-    max_risk = max((observation.risk_level for observation in group), key=lambda item: item.priority)
+    max_risk = max(
+        (observation.risk_level for observation in group), key=lambda item: item.priority
+    )
     return AnalysisEvent(
         video_id=group[0].video_id,
         start_time_ms=start_time_ms,
@@ -165,7 +167,9 @@ def _best_overlap(
     best_section: SectionMapping | None = None
     best_overlap = 0
     for section in sections:
-        overlap = max(0, min(end_time_ms, section.end_time_ms) - max(start_time_ms, section.start_time_ms))
+        overlap = max(
+            0, min(end_time_ms, section.end_time_ms) - max(start_time_ms, section.start_time_ms)
+        )
         if overlap > best_overlap:
             best_overlap = overlap
             best_section = section

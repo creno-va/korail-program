@@ -25,7 +25,9 @@ class PaddleOcrEngine:
         try:
             from paddleocr import PaddleOCR
         except ImportError as exc:
-            raise RuntimeError("PaddleOCR is not installed. Install OCR dependencies first.") from exc
+            raise RuntimeError(
+                "PaddleOCR is not installed. Install OCR dependencies first."
+            ) from exc
 
         self._engine = PaddleOCR(lang=self.config.lang, use_angle_cls=self.config.use_angle_cls)
 
@@ -61,4 +63,3 @@ def _iter_ocr_texts(result: Any) -> list[tuple[str, float]]:
                 confidence = 0.0
             items.append((text, confidence))
     return items
-

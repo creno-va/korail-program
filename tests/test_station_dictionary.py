@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from korail_program.ocr.station_dictionary import load_station_names
 
@@ -25,4 +25,3 @@ class StationDictionaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1,2 +1,1 @@
 """Frame judge pipeline package."""
-
