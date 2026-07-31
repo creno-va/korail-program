@@ -4,17 +4,21 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from korail_program.app.widgets import ActionButton, StatusChip, horizontal_divider
+from korail_program.config import DEFAULT_OPENAI_BASE_URL
+from korail_program.judge.openai_client import OpenAIApiError, test_openai_connection
 from korail_program.model_catalog import (
     MODEL_OPTIONS,
     ModelOption,
@@ -107,10 +111,13 @@ class ModelSettingsDialog(QDialog):
         footer = QHBoxLayout()
         close_button = ActionButton("닫기", icon_name="close")
         close_button.clicked.connect(self.reject)
+        test_button = ActionButton("연결 테스트", icon_name="lan-connect")
+        test_button.clicked.connect(self._test_connection)
         save_button = ActionButton("저장", icon_name="content-save-outline", tone="success")
         save_button.clicked.connect(self._save)
         footer.addStretch(1)
         footer.addWidget(close_button)
+        footer.addWidget(test_button)
         footer.addWidget(save_button)
         root.addLayout(footer)
 
@@ -157,3 +164,29 @@ class ModelSettingsDialog(QDialog):
     def _save(self) -> None:
         self.settings_saved.emit(self.current_model, self.api_key_input.text().strip())
         self.accept()
+
+    def _test_connection(self) -> None:
+        api_key = self.api_key_input.text().strip()
+        if not api_key:
+            QMessageBox.warning(self, "API key 필요", "OpenAI API key를 먼저 입력하세요.")
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            test_openai_connection(
+                base_url=DEFAULT_OPENAI_BASE_URL,
+                api_key=api_key,
+                model=self.current_model,
+            )
+        except OpenAIApiError as exc:
+            QMessageBox.warning(self, "연결 실패", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "연결 실패", str(exc))
+        else:
+            QMessageBox.information(
+                self,
+                "연결 성공",
+                f"OpenAI API key와 {self.current_model} 모델 접근을 확인했습니다.",
+            )
+        finally:
+            QApplication.restoreOverrideCursor()

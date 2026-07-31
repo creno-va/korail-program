@@ -8,9 +8,11 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import ssl
 from typing import Any
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 from korail_program.config import (
     DEFAULT_OPENAI_API_KEY_ENV,
@@ -120,23 +122,26 @@ def post_openai_responses(
         },
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = _extract_error_detail(_read_http_error_body(exc))
-        raise OpenAIApiError(
-            status_code=exc.code,
-            reason=str(exc.reason),
-            detail=detail,
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise OpenAIApiError(
-            status_code=None,
-            reason="connection error",
-            detail=str(exc.reason),
-        ) from exc
+    body = _open_openai_json(request, timeout_s=timeout_s)
 
+    if not isinstance(body, dict):
+        raise ValueError(f"Unexpected OpenAI response body: {body!r}")
+    return body
+
+
+def test_openai_connection(
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    timeout_s: int = 20,
+) -> dict[str, Any]:
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/models/{quote(model, safe='')}",
+        headers={"Authorization": f"Bearer {api_key}"},
+        method="GET",
+    )
+    body = _open_openai_json(request, timeout_s=timeout_s)
     if not isinstance(body, dict):
         raise ValueError(f"Unexpected OpenAI response body: {body!r}")
     return body
@@ -225,6 +230,89 @@ def resolve_openai_image_detail(model: str, detail: str) -> str:
 
 def encode_image_base64(image_path: str | Path) -> str:
     return base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+
+
+def _open_openai_json(request: urllib.request.Request, *, timeout_s: int) -> dict[str, Any]:
+    try:
+        with _urlopen_with_certifi_fallback(request, timeout_s=timeout_s) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = _extract_error_detail(_read_http_error_body(exc))
+        raise OpenAIApiError(
+            status_code=exc.code,
+            reason=str(exc.reason),
+            detail=detail,
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise OpenAIApiError(
+            status_code=None,
+            reason=_connection_error_reason(exc),
+            detail=_connection_error_detail(exc),
+        ) from exc
+
+
+def _urlopen_with_certifi_fallback(
+    request: urllib.request.Request,
+    *,
+    timeout_s: int,
+):
+    try:
+        return urllib.request.urlopen(request, timeout=timeout_s)
+    except urllib.error.URLError as exc:
+        if not _is_certificate_error(exc):
+            raise
+        context = _certifi_ssl_context()
+        if context is None:
+            raise
+        try:
+            return urllib.request.urlopen(request, timeout=timeout_s, context=context)
+        except urllib.error.URLError as fallback_exc:
+            if _is_certificate_error(fallback_exc):
+                raise _merge_certificate_errors(exc, fallback_exc) from fallback_exc
+            raise
+
+
+def _certifi_ssl_context() -> ssl.SSLContext | None:
+    try:
+        import certifi
+    except ImportError:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+def _is_certificate_error(exc: urllib.error.URLError) -> bool:
+    reason = exc.reason
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return True
+    if isinstance(reason, ssl.SSLError):
+        return "certificate" in str(reason).lower()
+    return "certificate" in str(reason).lower()
+
+
+def _merge_certificate_errors(
+    original: urllib.error.URLError,
+    fallback: urllib.error.URLError,
+) -> urllib.error.URLError:
+    return urllib.error.URLError(
+        "SSL certificate verification failed. "
+        f"OS trust store error: {original.reason}; bundled CA error: {fallback.reason}"
+    )
+
+
+def _connection_error_reason(exc: urllib.error.URLError) -> str:
+    if _is_certificate_error(exc):
+        return "SSL certificate verification failed"
+    return "connection error"
+
+
+def _connection_error_detail(exc: urllib.error.URLError) -> str:
+    if _is_certificate_error(exc):
+        return (
+            f"{exc.reason}. PC time, antivirus HTTPS scanning, company proxy, "
+            "or missing root CA can cause this. If your network uses a custom CA, "
+            "set SSL_CERT_FILE to that CA bundle path."
+        )
+    return str(exc.reason)
 
 
 def _read_http_error_body(exc: urllib.error.HTTPError) -> str:

@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from korail_program.judge.openai_client import (
     build_openai_responses_payload,
     encode_image_data_url,
     extract_openai_output_text,
+    test_openai_connection,
 )
 from korail_program.judge.prompts import JUDGE_SYSTEM_PROMPT, build_frame_judge_prompt
 
@@ -71,6 +73,29 @@ class OpenAIClientTests(unittest.TestCase):
             image_path.write_bytes(b"abc")
 
             self.assertEqual(encode_image_data_url(image_path), "data:image/jpeg;base64,YWJj")
+
+    def test_openai_connection_uses_selected_model_endpoint(self) -> None:
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self) -> bytes:
+                return b'{"id":"gpt-5.6-terra"}'
+
+        with mock.patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            body = test_openai_connection(
+                base_url="https://api.openai.com/v1",
+                api_key="test-key",
+                model="gpt-5.6-terra",
+            )
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(body["id"], "gpt-5.6-terra")
+        self.assertEqual(request.full_url, "https://api.openai.com/v1/models/gpt-5.6-terra")
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ datas = [
     (str(ROOT / "src" / "korail_program" / "assets" / "fonts"), "korail_program/assets/fonts"),
 ]
 datas += collect_data_files("qtawesome")
+datas += collect_data_files("certifi")
 
 hiddenimports = collect_submodules("qtawesome") + collect_submodules("korail_program")
 
