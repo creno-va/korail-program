@@ -1,4 +1,4 @@
-"""Local vision model catalog and lightweight hardware recommendation."""
+"""GPT vision model catalog and lightweight environment summary."""
 
 from __future__ import annotations
 
@@ -29,40 +29,52 @@ class SystemProfile:
 
 MODEL_OPTIONS: tuple[ModelOption, ...] = (
     ModelOption(
-        tag="qwen2.5vl:3b",
-        name="Qwen2.5-VL 3B",
-        tier="빠름",
-        size_label="약 3.2GB",
-        min_ram_gb=8,
-        recommended_vram_gb=4,
-        description="속도 우선. 16GB 미만 PC나 빠른 1차 확인용.",
+        tag="gpt-5.6-terra",
+        name="GPT-5.6 Terra",
+        tier="기본 추천",
+        size_label="정확도/비용 균형",
+        min_ram_gb=0,
+        recommended_vram_gb=None,
+        description=(
+            "전차선로 지장수목 VQA의 기본 모델입니다. 반복 프레임 분석에서 "
+            "정확도와 처리 비용의 균형이 가장 좋도록 설정합니다."
+        ),
     ),
     ModelOption(
-        tag="qwen3-vl:4b",
-        name="Qwen3-VL 4B",
-        tier="균형",
-        size_label="약 3.3GB",
-        min_ram_gb=12,
-        recommended_vram_gb=6,
-        description="정확도와 속도의 균형. GPU 여유가 애매한 PC용.",
+        tag="gpt-5.6-sol",
+        name="GPT-5.6 Sol",
+        tier="최고 정확도",
+        size_label="정밀 검토",
+        min_ram_gb=0,
+        recommended_vram_gb=None,
+        description=(
+            "의심 프레임이 많거나 리포트 품질을 우선해야 할 때 사용합니다. "
+            "속도와 비용보다 판정 안정성을 우선하는 옵션입니다."
+        ),
     ),
     ModelOption(
-        tag="qwen3-vl:8b",
-        name="Qwen3-VL 8B",
-        tier="권장",
-        size_label="약 6.1GB",
-        min_ram_gb=16,
-        recommended_vram_gb=8,
-        description="기본 정밀 모델. 16GB RAM과 8GB급 NVIDIA GPU 권장.",
+        tag="gpt-5.6-luna",
+        name="GPT-5.6 Luna",
+        tier="저비용",
+        size_label="빠른 예비 분석",
+        min_ram_gb=0,
+        recommended_vram_gb=None,
+        description=(
+            "대량 영상을 빠르게 훑는 예비 분석용 옵션입니다. 이벤트 후보를 먼저 "
+            "좁힌 뒤 Terra나 Sol로 재확인하는 흐름에 적합합니다."
+        ),
     ),
     ModelOption(
-        tag="qwen2.5vl:7b",
-        name="Qwen2.5-VL 7B",
+        tag="gpt-4.1-mini",
+        name="GPT-4.1 mini",
         tier="호환",
-        size_label="약 6.0GB",
-        min_ram_gb=16,
-        recommended_vram_gb=8,
-        description="Qwen3-VL에서 문제가 있을 때 쓰는 7B 대체 모델.",
+        size_label="Legacy API",
+        min_ram_gb=0,
+        recommended_vram_gb=None,
+        description=(
+            "기존 GPT-4.1 mini 기반 결과와 비교해야 할 때 남겨둔 호환 옵션입니다. "
+            "신규 배포의 기본값은 GPT-5.6 Terra입니다."
+        ),
     ),
 )
 
@@ -81,26 +93,21 @@ def detect_system_profile() -> SystemProfile:
 
 
 def recommend_model(profile: SystemProfile) -> ModelOption:
-    ram = profile.ram_gb or 0
-    vram = profile.gpu_vram_gb or 0
-    if ram >= 16 and vram >= 7.5:
-        return get_model_option("qwen3-vl:8b")
-    if ram >= 12 and (vram >= 4 or profile.gpu_vram_gb is None):
-        return get_model_option("qwen3-vl:4b")
-    return get_model_option("qwen2.5vl:3b")
+    return get_model_option("gpt-5.6-terra")
 
 
 def system_profile_label(profile: SystemProfile) -> str:
     ram = f"RAM {profile.ram_gb:.0f}GB" if profile.ram_gb else "RAM 확인 불가"
     if profile.gpu_name and profile.gpu_vram_gb:
-        return f"{ram} / {profile.gpu_name} {profile.gpu_vram_gb:.0f}GB"
+        return f"{ram} / {profile.gpu_name} {profile.gpu_vram_gb:.0f}GB / API 분석"
     if profile.gpu_name:
-        return f"{ram} / {profile.gpu_name}"
-    return f"{ram} / GPU 확인 불가"
+        return f"{ram} / {profile.gpu_name} / API 분석"
+    return f"{ram} / API 분석"
 
 
 def _detect_ram_gb() -> float | None:
     if platform.system().lower() == "windows":
+
         class MemoryStatus(ctypes.Structure):
             _fields_ = [
                 ("dwLength", ctypes.c_ulong),

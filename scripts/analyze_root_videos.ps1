@@ -10,7 +10,7 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Analyzer = Join-Path $ProjectRoot ".venv\Scripts\korail-analyzer.exe"
 
 if (-not $Model) {
-    $Model = "qwen3-vl:8b"
+    $Model = "gpt-5.6-terra"
 }
 
 if (-not (Test-Path $Analyzer)) {

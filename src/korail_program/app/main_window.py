@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QProcessEnvironment, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QSize, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -46,19 +47,15 @@ from korail_program.app.widgets import (
 from korail_program.config import (
     DEFAULT_ANALYSIS_INTERVAL_SEC,
     DEFAULT_OCR_INTERVAL_SEC,
+    DEFAULT_OPENAI_API_KEY_ENV,
     DEFAULT_VISION_MODEL,
 )
 from korail_program.core.models import RiskLevel
 from korail_program.core.timecode import format_timecode
 from korail_program.model_catalog import detect_system_profile, recommend_model
 from korail_program.runtime import (
-    bundled_ollama_executable,
-    bundled_ollama_runtime_ready,
-    list_installed_ollama_models,
-    ollama_process_environment,
     resolve_ffmpeg_executable,
     resolve_ffprobe_executable,
-    resolve_ollama_executable,
     user_data_dir,
 )
 
@@ -110,10 +107,8 @@ class MainWindow(QMainWindow):
         self._selected_video_path: Path | None = None
         self._last_progress_log_key: tuple[str, str, int, int] | None = None
         self._selected_model = self._load_selected_model()
+        self._openai_api_key = self._load_openai_api_key()
         self._system_profile = detect_system_profile()
-        self._pending_install_model: str | None = None
-        self._model_install_process: QProcess | None = None
-        self._ollama_server_process: QProcess | None = None
 
         self.setWindowTitle("전차선로 지장수목 분석")
         self.resize(1360, 860)
@@ -195,6 +190,9 @@ class MainWindow(QMainWindow):
         self.runtime_chip = StatusChip("런타임 점검", "warning")
         self.model_chip = StatusChip(f"{self._selected_model} 필요", "warning")
         self.ocr_chip = StatusChip("VLM OCR 대기", "warning")
+        self.runtime_chip.setText("API key 필요")
+        self.model_chip.setText(f"{self._selected_model} 선택")
+        self.ocr_chip.setText("GPT OCR 대기")
         action_row.addWidget(self.runtime_chip)
         action_row.addWidget(self.model_chip)
         action_row.addWidget(self.ocr_chip)
@@ -212,6 +210,7 @@ class MainWindow(QMainWindow):
         self.model_summary_label = QLabel(self._selected_model)
         self.model_summary_label.setObjectName("PanelText")
         self.recommendation_chip = StatusChip("추천 확인", "neutral")
+        model_title.setText("GPT API")
         model_row.addWidget(model_title)
         model_row.addWidget(self.model_summary_label)
         model_row.addWidget(self.recommendation_chip)
@@ -219,6 +218,7 @@ class MainWindow(QMainWindow):
 
         action_buttons = QHBoxLayout()
         self.install_model_button = ActionButton("모델 설정", icon_name="tune")
+        self.install_model_button.setText("API 설정")
         self.install_model_button.clicked.connect(self.install_model)
         self.start_button = ActionButton("선택 영상 분석", icon_name="play-circle-outline")
         self.start_button.clicked.connect(self.start_analysis)
@@ -337,28 +337,36 @@ class MainWindow(QMainWindow):
         self._sync_primary_actions()
 
     def _load_selected_model(self) -> str:
-        settings_path = _settings_path()
-        try:
-            payload = json.loads(settings_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return DEFAULT_VISION_MODEL
+        payload = _read_settings()
         model = str(payload.get("selected_model", "")).strip()
         return model or DEFAULT_VISION_MODEL
 
-    def _save_selected_model(self) -> None:
+    def _load_openai_api_key(self) -> str:
+        payload = _read_settings()
+        return str(payload.get("openai_api_key", "")).strip()
+
+    def _save_settings(self) -> None:
         settings_path = _settings_path()
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text(
-            json.dumps({"selected_model": self._selected_model}, ensure_ascii=False, indent=2)
+            json.dumps(
+                {
+                    "selected_model": self._selected_model,
+                    "openai_api_key": self._openai_api_key,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
             + "\n",
             encoding="utf-8",
         )
 
-    def _select_model(self, model_tag: str) -> None:
-        self._selected_model = model_tag
-        self._save_selected_model()
-        self._refresh_model_summary()
-        self._log(f"모델 선택: {model_tag}")
+    def _save_api_settings(self, model_tag: str, api_key: str) -> None:
+        self._selected_model = model_tag.strip() or DEFAULT_VISION_MODEL
+        self._openai_api_key = api_key.strip()
+        self._save_settings()
+        self._refresh_runtime_status()
+        self._log(f"GPT API 설정 저장: {self._selected_model}")
 
     def _choose_files(self) -> None:
         dialog = QFileDialog(self, "영상 파일 선택")
@@ -509,8 +517,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "분석 진행 중",
-                "로컬 VLM 안정성을 위해 한 번에 한 영상만 분석합니다. "
-                "현재 영상을 완료하거나 중지한 뒤 다음 영상을 시작하세요.",
+                "한 번에 한 영상씩 분석합니다. 현재 영상을 완료하거나 중지한 뒤 다음 영상을 시작하세요.",
             )
             return
         if self._pending_analysis_path == path:
@@ -518,53 +525,20 @@ class MainWindow(QMainWindow):
             return
         self._selected_video_path = path
         self.analysis_list.select_key(path)
-        ollama_path = resolve_ollama_executable()
-        if ollama_path is None:
+        if not self._has_openai_api_key():
             self._pending_analysis_path = None
-            self.runtime_chip.setText(_ollama_runtime_error_label())
+            self.runtime_chip.setText("API key 필요")
             self.runtime_chip.set_tone("error")
             QMessageBox.warning(
                 self,
-                "Ollama 런타임 오류",
-                _ollama_runtime_error_message(),
+                "OpenAI API key 필요",
+                "분석을 시작하려면 OPENAI_API_KEY 환경변수를 설정하거나 API 설정에서 key를 저장하세요.",
             )
+            self.install_model()
             return
 
         self._pending_analysis_path = path
         self._sync_primary_actions()
-        self._ensure_ollama_server(str(ollama_path))
-        QTimer.singleShot(
-            1600,
-            lambda target=path, runtime=str(ollama_path): self._start_video_analysis_after_model_check(
-                target,
-                runtime,
-            ),
-        )
-
-    def _start_video_analysis_after_model_check(self, path: Path, ollama_path: str) -> None:
-        if self._pending_analysis_path != path:
-            return
-        active_path = next(iter(self._analysis_workers), None)
-        if active_path is not None and active_path != path:
-            self._pending_analysis_path = None
-            self._restore_analysis_card_action(path)
-            self._sync_primary_actions()
-            return
-        installed_models = list_installed_ollama_models(ollama_path)
-        if self._selected_model not in installed_models:
-            self._pending_analysis_path = None
-            self._restore_analysis_card_action(path)
-            self.model_chip.setText("모델 미설치")
-            self.model_chip.set_tone("warning")
-            self._log(f"모델 미설치: {self._selected_model}")
-            self._sync_primary_actions()
-            QMessageBox.information(
-                self,
-                "모델 미설치",
-                "선택한 모델을 먼저 설치하세요. 모델 설정에서 설치할 수 있습니다.",
-            )
-            self._open_model_dialog(ollama_path)
-            return
         self._prepare_video_analysis_card(path)
         self._start_analysis_worker(path)
 
@@ -623,6 +597,7 @@ class MainWindow(QMainWindow):
             output_dir=output_dir,
             interval_s=DEFAULT_ANALYSIS_INTERVAL_SEC,
             model=self._selected_model,
+            openai_api_key=self._openai_api_key or None,
             route_hint=None,
             ffmpeg_path=resolve_ffmpeg_executable(),
             ffprobe_path=resolve_ffprobe_executable(),
@@ -810,123 +785,17 @@ class MainWindow(QMainWindow):
             self.events_list.select_key(next(iter(self._event_payloads)))
 
     def install_model(self) -> None:
-        if self._model_install_process is not None:
-            if self._model_install_process.state() != QProcess.ProcessState.NotRunning:
-                self._log("모델 설치가 이미 진행 중입니다.")
-                return
+        self._open_model_dialog()
 
-        ollama_path = resolve_ollama_executable()
-        if ollama_path is None:
-            self.runtime_chip.setText(_ollama_runtime_error_label())
-            self.runtime_chip.set_tone("error")
-            QMessageBox.warning(
-                self,
-                "Ollama 런타임 오류",
-                _ollama_runtime_error_message(),
-            )
-            return
-
-        self._ensure_ollama_server(str(ollama_path))
-        QTimer.singleShot(800, lambda: self._open_model_dialog(str(ollama_path)))
-
-    def _open_model_dialog(self, ollama_path: str) -> None:
-        installed_models = list_installed_ollama_models(ollama_path)
+    def _open_model_dialog(self) -> None:
         dialog = ModelSettingsDialog(
             current_model=self._selected_model,
-            installed_models=installed_models,
+            api_key=self._openai_api_key,
             profile=self._system_profile,
             parent=self,
         )
-        dialog.model_selected.connect(self._select_model)
-        dialog.install_requested.connect(lambda tag: self._start_model_pull(ollama_path, tag))
+        dialog.settings_saved.connect(self._save_api_settings)
         dialog.exec()
-
-    def _start_model_pull(self, ollama_path: str, model_tag: str) -> None:
-        process = QProcess(self)
-        self._model_install_process = process
-        self._pending_install_model = model_tag
-        process.setProgram(ollama_path)
-        process.setArguments(["pull", model_tag])
-        process.setProcessEnvironment(_process_environment())
-        process.readyReadStandardOutput.connect(
-            lambda: self._append_process_output(process.readAllStandardOutput())
-        )
-        process.readyReadStandardError.connect(
-            lambda: self._append_process_output(process.readAllStandardError())
-        )
-        process.errorOccurred.connect(self._handle_model_install_error)
-        process.finished.connect(self._handle_model_install_finished)
-
-        self.install_model_button.setEnabled(False)
-        self.model_chip.setText("모델 설치 중")
-        self.model_chip.set_tone("warning")
-        self.ocr_chip.setText("OCR 모델 공유")
-        self.ocr_chip.set_tone("warning")
-        self.model_summary_label.setText(f"{model_tag} 설치 중")
-        self._log(f"모델 설치 시작: ollama pull {model_tag}")
-        process.start()
-
-    def _ensure_ollama_server(self, ollama_path: str) -> None:
-        if self._ollama_server_process is not None:
-            if self._ollama_server_process.state() != QProcess.ProcessState.NotRunning:
-                return
-
-        server = QProcess(self)
-        self._ollama_server_process = server
-        server.setProgram(ollama_path)
-        server.setArguments(["serve"])
-        server.setProcessEnvironment(_process_environment())
-        server.readyReadStandardOutput.connect(
-            lambda: self._append_process_output(server.readAllStandardOutput(), source="server")
-        )
-        server.readyReadStandardError.connect(
-            lambda: self._append_process_output(server.readAllStandardError(), source="server")
-        )
-        server.start()
-        self._log("Ollama 로컬 서버 시작")
-
-    def _append_process_output(self, payload, *, source: str = "process") -> None:
-        text = bytes(payload).decode("utf-8", errors="replace").strip()
-        if not text:
-            return
-        for line in text.splitlines():
-            cleaned = line.strip()
-            if source == "server" and not _should_show_ollama_server_log(cleaned):
-                continue
-            self._log(cleaned)
-
-    def _handle_model_install_error(self, _error) -> None:
-        self.install_model_button.setEnabled(True)
-        self._pending_install_model = None
-        self.model_chip.setText("모델 설치 실패")
-        self.model_chip.set_tone("error")
-        self.ocr_chip.setText("OCR 대기")
-        self.ocr_chip.set_tone("error")
-        self.model_summary_label.setText(self._selected_model)
-        QMessageBox.warning(
-            self,
-            "모델 설치 실패",
-            "번들 Ollama 런타임 실행에 실패했습니다. 설치 파일을 다시 설치한 뒤 재시도하세요.",
-        )
-
-    def _handle_model_install_finished(self, exit_code: int, _exit_status=None) -> None:
-        self.install_model_button.setEnabled(True)
-        model_tag = self._pending_install_model or self._selected_model
-        self._pending_install_model = None
-        if exit_code == 0:
-            self._select_model(model_tag)
-            self.model_chip.setText(f"{model_tag} 설치됨")
-            self.model_chip.set_tone("success")
-            self.ocr_chip.setText("VLM OCR 준비")
-            self.ocr_chip.set_tone("success")
-            self._log(f"모델 설치 완료: {model_tag}")
-            return
-        self.model_chip.setText("모델 설치 실패")
-        self.model_chip.set_tone("error")
-        self.ocr_chip.setText("OCR 대기")
-        self.ocr_chip.set_tone("error")
-        self._log(f"모델 설치 실패: exit_code={exit_code}")
-        self.model_summary_label.setText(self._selected_model)
 
     def export_report(self) -> None:
         if self._last_result is None:
@@ -1030,18 +899,21 @@ class MainWindow(QMainWindow):
         self.queue_count_chip.setText(f"{count}개")
         self.queue_count_chip.set_tone("success" if count else "neutral")
 
+    def _has_openai_api_key(self) -> bool:
+        return bool(self._openai_api_key or os.environ.get(DEFAULT_OPENAI_API_KEY_ENV))
+
     def _refresh_runtime_status(self) -> None:
-        if resolve_ollama_executable() is None:
-            self.runtime_chip.setText(_ollama_runtime_error_label())
-            self.runtime_chip.set_tone("error")
+        if not self._has_openai_api_key():
+            self.runtime_chip.setText("API key 필요")
+            self.runtime_chip.set_tone("warning")
         elif str(resolve_ffmpeg_executable()) == "ffmpeg" or str(resolve_ffprobe_executable()) == "ffprobe":
             self.runtime_chip.setText("FFmpeg 확인 필요")
             self.runtime_chip.set_tone("warning")
         else:
-            self.runtime_chip.setText("런타임 포함")
+            self.runtime_chip.setText("API 연결 준비")
             self.runtime_chip.set_tone("success")
-        self.ocr_chip.setText("VLM OCR 준비")
-        self.ocr_chip.set_tone("neutral")
+        self.ocr_chip.setText("GPT OCR 준비")
+        self.ocr_chip.set_tone("success" if self._has_openai_api_key() else "neutral")
         self._refresh_model_summary()
 
     def _add_analysis_status_card(self, path: Path, queue_file: QueueFile) -> None:
@@ -1094,7 +966,7 @@ class MainWindow(QMainWindow):
                     self.start_button.setToolTip("영상 카드의 중지 버튼으로 현재 분석을 중지할 수 있습니다.")
                 else:
                     self.start_button.setText("분석 준비")
-                    self.start_button.setToolTip("Ollama 서버와 모델 설치 상태를 확인하는 중입니다.")
+                    self.start_button.setToolTip("GPT API 설정과 분석 준비 상태를 확인하는 중입니다.")
             else:
                 self.start_button.setText("분석 진행 중")
                 self.start_button.setToolTip("한 번에 한 영상만 분석합니다.")
@@ -1126,7 +998,7 @@ def _event_empty_message(result: BatchAnalysisResult) -> str:
     if result.aborted:
         return (
             "모델 호출 오류로 분석이 중단되었습니다. "
-            "리포트의 처리 상태와 실행 로그에서 Ollama 오류를 확인하세요."
+            "리포트의 처리 상태와 실행 로그에서 GPT API 오류를 확인하세요."
         )
     if result.failure_count:
         return (
@@ -1170,13 +1042,17 @@ def _should_log_progress(
     return progress.frame_index % 5 == 0
 
 
-def _should_show_ollama_server_log(line: str) -> bool:
-    lowered = line.lower()
-    return any(token in lowered for token in ("error", "fatal", "panic"))
-
-
 def _settings_path() -> Path:
     return user_data_dir() / "settings.json"
+
+
+def _read_settings() -> dict[str, object]:
+    settings_path = _settings_path()
+    try:
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _safe_report_dir(path: Path) -> str:
@@ -1216,21 +1092,6 @@ def _is_supported_video(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
 
 
-def _ollama_runtime_error_label() -> str:
-    if bundled_ollama_executable().exists() and not bundled_ollama_runtime_ready():
-        return "Ollama 손상"
-    return "Ollama 없음"
-
-
-def _ollama_runtime_error_message() -> str:
-    if bundled_ollama_executable().exists() and not bundled_ollama_runtime_ready():
-        return (
-            "설치된 Ollama 런타임에 llama-server 보조 바이너리가 없습니다. "
-            "최신 설치 파일로 다시 설치하세요."
-        )
-    return "설치 파일에 Ollama 런타임이 포함되어 있지 않습니다. 최신 설치 파일로 다시 설치하세요."
-
-
 def _find_capture_for_event(event: dict[str, object], records: list[object]) -> Path | None:
     video_id = int(event.get("video_id", 0))
     start_ms = int(event.get("start_time_ms", 0))
@@ -1247,10 +1108,3 @@ def _find_capture_for_event(event: dict[str, object], records: list[object]) -> 
         if start_ms <= video_time_ms < end_ms:
             return Path(str(record["capture_path"]))
     return None
-
-
-def _process_environment() -> QProcessEnvironment:
-    env = QProcessEnvironment.systemEnvironment()
-    for key, value in ollama_process_environment().items():
-        env.insert(key, value)
-    return env

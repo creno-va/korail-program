@@ -13,7 +13,8 @@ from korail_program.config import (
     DEFAULT_ANALYSIS_INTERVAL_SEC,
     DEFAULT_MAX_FRAME_WIDTH,
     DEFAULT_OCR_INTERVAL_SEC,
-    DEFAULT_OLLAMA_URL,
+    DEFAULT_OPENAI_API_KEY_ENV,
+    DEFAULT_OPENAI_BASE_URL,
     DEFAULT_VISION_MODEL,
 )
 from korail_program.core.event_merger import merge_judge_observations
@@ -41,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = subparsers.add_parser(
         "analyze-videos",
-        help="Sample videos, judge frames with a local VLM, and write a report.",
+        help="Sample videos, judge frames with GPT vision, and write a report.",
     )
     analyze.add_argument(
         "inputs",
@@ -52,7 +53,15 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--out", type=Path, default=Path("output") / "analysis")
     analyze.add_argument("--interval-sec", type=float, default=DEFAULT_ANALYSIS_INTERVAL_SEC)
     analyze.add_argument("--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL))
-    analyze.add_argument("--ollama-url", default=os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_URL))
+    analyze.add_argument(
+        "--openai-base-url",
+        default=os.environ.get("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
+    )
+    analyze.add_argument(
+        "--openai-api-key-env",
+        default=os.environ.get("KORAIL_OPENAI_API_KEY_ENV", DEFAULT_OPENAI_API_KEY_ENV),
+        help="Environment variable that contains the OpenAI API key.",
+    )
     analyze.add_argument("--route-hint")
     analyze.add_argument("--ffmpeg", default=os.environ.get("FFMPEG_PATH") or str(resolve_ffmpeg_executable()))
     analyze.add_argument("--ffprobe", default=os.environ.get("FFPROBE_PATH") or str(resolve_ffprobe_executable()))
@@ -61,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--ocr-backend",
         choices=["vlm", "auto", "paddle", "none"],
         default=os.environ.get("KORAIL_OCR_BACKEND", "vlm"),
-        help="Station OCR backend. 'vlm' works with the bundled local model and needs no OCR package.",
+        help="Station OCR backend. 'vlm' uses the configured GPT vision API and needs no OCR package.",
     )
     analyze.add_argument(
         "--ocr-interval-sec",
@@ -87,6 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from korail_program.env import load_default_env_files
+
+    load_default_env_files()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
@@ -160,7 +172,8 @@ def _analyze_videos(args: argparse.Namespace) -> int:
             output_dir=args.out,
             interval_s=args.interval_sec,
             model=args.model,
-            ollama_url=args.ollama_url,
+            openai_base_url=args.openai_base_url,
+            openai_api_key_env=args.openai_api_key_env,
             route_hint=args.route_hint,
             ffmpeg_path=args.ffmpeg,
             ffprobe_path=args.ffprobe,

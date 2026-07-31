@@ -6,8 +6,6 @@ RUNTIME="$APP/Contents/MacOS/runtime"
 
 if [ -d "$RUNTIME" ]; then
   find "$RUNTIME" -type f \( \
-    -name "ollama" -o \
-    -name "llama-server" -o \
     -name "ffmpeg" -o \
     -name "ffprobe" \
   \) -exec chmod 755 {} \; 2>/dev/null || true

@@ -114,6 +114,18 @@ QLabel#ButtonText {
     font-weight: 700;
 }
 
+QLineEdit#TokenInput {
+    background: #ffffff;
+    border: 1px solid #dfe3e8;
+    border-radius: 7px;
+    padding: 9px 10px;
+    selection-background-color: #dfe4ea;
+}
+
+QLineEdit#TokenInput:focus {
+    border: 1px solid #9aa3af;
+}
+
 QFrame#ActionButton {
     background: #e9edf2;
     border: none;

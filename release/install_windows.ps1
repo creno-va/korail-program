@@ -1,7 +1,7 @@
 param(
     [string]$Repo = "creno-va/korail-program",
     [string]$Version = "latest",
-    [string]$Model = "qwen3-vl:8b",
+    [string]$Model = "gpt-5.6-terra",
     [string]$InstallRoot = "$env:LOCALAPPDATA\KorailProgram",
     [switch]$SkipSystemPackages
 )
@@ -89,18 +89,6 @@ if (-not (Get-CommandPath "ffmpeg")) {
     Install-WingetPackage -Id "Gyan.FFmpeg" -Name "FFmpeg"
 }
 
-$Ollama = Get-CommandPath "ollama"
-if (-not $Ollama) {
-    Install-WingetPackage -Id "Ollama.Ollama" -Name "Ollama"
-    $Ollama = Get-CommandPath "ollama"
-}
-if (-not $Ollama) {
-    $LocalOllama = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
-    if (Test-Path $LocalOllama) {
-        $Ollama = $LocalOllama
-    }
-}
-
 $PythonExecutable = $PythonCommand[0]
 $PythonArgs = @()
 if ($PythonCommand.Count -gt 1) {
@@ -112,16 +100,8 @@ $VenvPath = Join-Path $InstallRoot ".venv"
 & (Join-Path $VenvPath "Scripts\python.exe") -m pip install --upgrade pip
 & (Join-Path $VenvPath "Scripts\python.exe") -m pip install $SourceDir
 
-if ($Ollama) {
-    try {
-        Invoke-WebRequest "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 2 | Out-Null
-    } catch {
-        Start-Process -FilePath $Ollama -ArgumentList "serve" -WindowStyle Hidden
-        Start-Sleep -Seconds 5
-    }
-    & $Ollama pull $Model
-} else {
-    Write-Warning "Ollama was not found. Install Ollama manually, then run: ollama pull $Model"
+if (-not $env:OPENAI_API_KEY) {
+    Write-Warning "OPENAI_API_KEY is not set. Set it in the environment or save it in the app's API settings before analysis."
 }
 
 $RunGui = Join-Path $InstallRoot "Run Korail Analyzer.cmd"

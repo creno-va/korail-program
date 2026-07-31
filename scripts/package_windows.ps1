@@ -91,89 +91,6 @@ function Install-PortableInnoSetup {
     return $Iscc.FullName
 }
 
-function Get-GitHubReleaseAssetUrl {
-    param(
-        [string]$Repository,
-        [string]$AssetName
-    )
-    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repository/releases/latest"
-    $Asset = $Release.assets | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
-    if (-not $Asset) {
-        throw "Could not find GitHub release asset: $Repository / $AssetName"
-    }
-    return $Asset.browser_download_url
-}
-
-function Test-OllamaRuntime {
-    param([string]$Root)
-
-    if (-not (Test-Path -LiteralPath $Root)) {
-        return $false
-    }
-
-    foreach ($RelativePath in @(
-        "ollama.exe",
-        "lib\ollama\llama-server.exe",
-        "lib\ollama\libllama-server-impl.dll",
-        "lib\ollama\libllama.dll",
-        "lib\ollama\ggml.dll"
-    )) {
-        if (-not (Test-Path -LiteralPath (Join-Path $Root $RelativePath))) {
-            return $false
-        }
-    }
-    return $true
-}
-
-function Copy-OllamaRuntime {
-    param(
-        [string]$SourceRoot,
-        [string]$VendorRoot
-    )
-
-    if (-not (Test-OllamaRuntime $SourceRoot)) {
-        throw "Downloaded Ollama runtime is incomplete: $SourceRoot"
-    }
-
-    $VendorParent = Split-Path -Parent $VendorRoot
-    New-Item -ItemType Directory -Force -Path $VendorParent | Out-Null
-    if (Test-Path -LiteralPath $VendorRoot) {
-        Remove-Item -LiteralPath $VendorRoot -Recurse -Force
-    }
-    Copy-Item -LiteralPath $SourceRoot -Destination $VendorRoot -Recurse
-
-    if (-not (Test-OllamaRuntime $VendorRoot)) {
-        throw "Copied Ollama runtime is incomplete: $VendorRoot"
-    }
-}
-
-function Install-OllamaRuntime {
-    $VendorRoot = Resolve-InWorkspace "packaging\vendor\ollama"
-    $OllamaExe = Join-Path $VendorRoot "ollama.exe"
-    if (Test-OllamaRuntime $VendorRoot) {
-        return $OllamaExe
-    }
-
-    $ToolsRoot = Resolve-InWorkspace ".tools"
-    New-Item -ItemType Directory -Force -Path $ToolsRoot | Out-Null
-    $ZipPath = Join-Path $ToolsRoot "ollama-windows-amd64.zip"
-    $ExtractPath = Join-Path $ToolsRoot "ollama-windows-amd64"
-
-    if (-not (Test-OllamaRuntime $ExtractPath)) {
-        $Url = Get-GitHubReleaseAssetUrl -Repository "ollama/ollama" -AssetName "ollama-windows-amd64.zip"
-
-        Write-Host "Downloading Ollama runtime: $Url"
-        Invoke-WebRequest -Uri $Url -OutFile $ZipPath
-        if (Test-Path -LiteralPath $ExtractPath) {
-            Remove-Item -LiteralPath $ExtractPath -Recurse -Force
-        }
-        Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractPath -Force
-    }
-
-    Copy-OllamaRuntime -SourceRoot $ExtractPath -VendorRoot $VendorRoot
-    return $OllamaExe
-}
-
 function Install-FfmpegRuntime {
     $VendorBin = Resolve-InWorkspace "packaging\vendor\ffmpeg\bin"
     $FfmpegExe = Join-Path $VendorBin "ffmpeg.exe"
@@ -216,16 +133,6 @@ function Copy-BundledRuntime {
     $RuntimeRoot = Resolve-InWorkspace "dist\KorailAnalyzer\runtime"
     New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
 
-    $OllamaSource = Resolve-InWorkspace "packaging\vendor\ollama"
-    if (-not (Test-OllamaRuntime $OllamaSource)) {
-        throw "Ollama runtime is missing. Rerun without -SkipRuntimeDownloads."
-    }
-    $OllamaTarget = Join-Path $RuntimeRoot "ollama"
-    if (Test-Path -LiteralPath $OllamaTarget) {
-        Remove-Item -LiteralPath $OllamaTarget -Recurse -Force
-    }
-    Copy-Item -LiteralPath $OllamaSource -Destination $OllamaTarget -Recurse
-
     $FfmpegSource = Resolve-InWorkspace "packaging\vendor\ffmpeg"
     if (-not (Test-Path -LiteralPath (Join-Path $FfmpegSource "bin\ffmpeg.exe"))) {
         throw "FFmpeg runtime is missing. Rerun without -SkipRuntimeDownloads."
@@ -265,7 +172,6 @@ if (-not (Test-Path -LiteralPath $AppExe)) {
 }
 
 if (-not $SkipRuntimeDownloads) {
-    Install-OllamaRuntime | Out-Null
     Install-FfmpegRuntime | Out-Null
 }
 Copy-BundledRuntime

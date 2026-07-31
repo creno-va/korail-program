@@ -3,7 +3,7 @@ set -eu
 
 REPO=${REPO:-creno-va/korail-program}
 VERSION=${VERSION:-latest}
-MODEL=${MODEL:-qwen3-vl:8b}
+MODEL=${MODEL:-gpt-5.6-terra}
 INSTALL_ROOT=${INSTALL_ROOT:-"$HOME/Applications/KorailProgram"}
 PYTHON_BIN=${PYTHON_BIN:-python3}
 
@@ -39,11 +39,8 @@ if command -v brew >/dev/null 2>&1; then
   if ! command -v ffmpeg >/dev/null 2>&1; then
     brew install ffmpeg
   fi
-  if ! command -v ollama >/dev/null 2>&1; then
-    brew install ollama
-  fi
 else
-  echo "Homebrew was not found. Install Python 3.11+, FFmpeg, and Ollama manually if missing."
+  echo "Homebrew was not found. Install Python 3.11+ and FFmpeg manually if missing."
 fi
 
 "$PYTHON_BIN" -m venv "$INSTALL_ROOT/.venv"
@@ -51,14 +48,8 @@ fi
 python -m pip install --upgrade pip
 python -m pip install "$SOURCE_DIR"
 
-if command -v ollama >/dev/null 2>&1; then
-  if ! curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
-    nohup ollama serve > "$INSTALL_ROOT/ollama.log" 2>&1 &
-    sleep 5
-  fi
-  ollama pull "$MODEL"
-else
-  echo "Ollama was not found. Install Ollama manually, then run: ollama pull $MODEL"
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo "OPENAI_API_KEY is not set. Set it in the environment or save it in the app's API settings before analysis."
 fi
 
 cat > "$INSTALL_ROOT/run_gui.sh" <<EOF

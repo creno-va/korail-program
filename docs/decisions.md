@@ -1,99 +1,85 @@
 # 프로젝트 결정 사항
 
-## D-001. Python 런타임
+## D-001. Python 환경
 
-결정: CPython을 기본 런타임으로 사용한다.
-
-PyPy는 Python 구현체이며 패키지 매니저가 아니다. 순수 Python 코드에는 장점이 있지만, 이 프로젝트는 PySide6, PyInstaller, 영상 처리, 로컬 모델 런타임 연동처럼 Windows 패키징 안정성이 중요하다. 따라서 호환성과 납품 안정성을 우선해 CPython을 기준으로 한다.
-
-권장 버전:
-
-- Python 3.11 또는 3.12
-- Windows 11 64-bit
-
-## D-002. 패키지/환경 관리
-
-결정: uv를 우선 검토한다.
+결정: CPython 3.11+를 기본 런타임으로 사용한다.
 
 이유:
 
-- 빠른 의존성 설치와 lockfile 관리
-- pip 호환 워크플로우
-- CI/빌드 스크립트로 옮기기 쉬움
+- PySide6, PyInstaller, FFmpeg 연동의 Windows/macOS 패키징 안정성이 중요하다.
+- 납품 PC에는 Python 개발 환경이 없어도 실행되는 설치 마법사를 제공한다.
 
-초기에는 다음 구조를 목표로 한다.
-
-```text
-pyproject.toml
-uv.lock
-src/korail_program/
-tests/
-docs/
-```
-
-## D-003. GUI 프레임워크
+## D-002. GUI 프레임워크
 
 결정: PySide6 + Qt Widgets를 사용한다.
 
 이유:
 
-- Windows 데스크톱 업무 프로그램에 적합
-- 파일 대기열, 테이블, 썸네일, 설정창, 로그, 진행률 UI 구현이 안정적
-- PyQt보다 납품 라이선스 검토 부담이 작음
-- 백그라운드 작업은 QThread 또는 QProcess로 UI와 분리 가능
+- Windows 업무용 데스크톱 프로그램에 적합하다.
+- QThread 기반 백그라운드 분석과 설치형 배포가 단순하다.
+- KRDS에 가까운 절제된 grayscale 업무 UI를 구성하기 쉽다.
 
-## D-004. 프레임 판정 모델
+## D-003. 프레임 판정 모델
 
-결정: 초기 MVP에서는 YOLO를 배제하고 로컬 멀티모달 LLM으로 VQA judge를 수행한다. 기본 정밀 모델은 `qwen3-vl:8b`이며, 사양에 따라 `qwen3-vl:4b`, `qwen2.5vl:3b`를 선택할 수 있다.
+결정: YOLO와 로컬 VLM 대신 OpenAI GPT API 기반 VQA judge를 기본 경로로 사용한다.
 
-역할:
+이유:
 
-- 프레임에 지장수목/대나무 의심 객체가 있는지 판단
-- 전차선로 근접 여부 판단
-- 위험도 상/중/하/없음 판정
-- 판단 근거 문장 생성
-- 가능하면 위치 힌트 bbox 생성
+- YOLO는 현장 데이터 수집, 라벨링, 학습, 모델 검증 비용이 크다.
+- 로컬 VLM은 설치 파일 크기, PC 사양, Ollama 런타임 오류, 처리 속도 문제가 컸다.
+- GPT vision API는 별도 모델 설치 없이 더 안정적인 VQA 품질을 기대할 수 있다.
+
+기본 모델:
+
+- `gpt-5.6-terra`
+
+선택 모델:
+
+- `gpt-5.6-sol`
+- `gpt-5.6-luna`
+- `gpt-4.1-mini`
 
 주의:
 
-- VLM judge는 안전 진단의 최종 근거가 아니라 후보 이벤트 생성기다.
-- 놓침(false negative)을 줄이는 방향으로 프롬프트와 후처리를 설계한다.
-- 모든 프레임을 처리하지 않고 샘플링 + 이벤트 병합을 사용한다.
+- GPT judge는 안전 진단의 최종 근거가 아니라 후보 이벤트 생성기다.
+- false negative를 줄이는 방향으로 프롬프트와 샘플링 간격을 조정한다.
+- API key, 네트워크, 비용/쿼터 관리가 운영 요구사항에 포함된다.
 
-## D-005. 역명/위치 OCR
+## D-004. 역명/OCR
 
-결정: VLM judge와 분리된 OCR 파이프라인을 두되, 기본 백엔드는 같은 로컬 멀티모달 LLM의 VLM OCR 프롬프트로 둔다.
-
-이유:
-
-- 납품 PC에 Python 개발 환경, PaddleOCR, PaddlePaddle을 별도로 설치하지 않아도 앱 기본 기능이 동작해야 함
-- 앱 내 모델 설정에서 설치한 Qwen VL 모델을 judge와 OCR이 공유하면 설치 리소스와 장애 지점이 줄어듦
-- OCR 실패가 judge 결과에 직접 영향을 주지 않도록 책임은 계속 분리함
-- 역명 사전, 노선 정보, 전후 보간을 결합해 오인식을 줄일 수 있음
-
-보류:
-
-- PaddleOCR은 사내 검증 후 정확도와 속도가 충분할 때 선택형 고속 백엔드로 다시 포함한다.
-
-## D-006. 데이터 저장
-
-결정: SQLite를 기본 내장 DB로 사용한다.
-
-저장 대상:
-
-- 영상 파일 메타데이터
-- OCR 관측값
-- Judge 관측값
-- 병합된 이벤트
-- 캡처 이미지 경로
-- 리포트 생성 이력
-
-## D-007. 배포 방식
-
-결정: 초기 납품은 one-folder 앱을 Inno Setup 설치 마법사로 감싸 배포한다.
+결정: Judge와 분리된 OCR 파이프라인을 유지하되, 기본 백엔드는 GPT vision OCR 프롬프트로 둔다.
 
 이유:
 
-- Ollama standalone 런타임, FFmpeg, 리포트 템플릿 포함이 쉬움
-- one-file은 대형 모델과 CUDA 의존성 때문에 실행 지연과 장애 원인 추적이 어려움
-- 설치 프로그램은 Inno Setup 또는 NSIS를 검토한다.
+- PaddleOCR/PaddlePaddle 설치 부담을 기본 경로에서 제거한다.
+- OCR 실패가 judge 결과에 직접 영향을 주지 않도록 책임을 분리한다.
+- 역명 사전, 노선 힌트, 전후 타임코드 보간은 후처리로 보강한다.
+
+## D-005. 배포 방식
+
+결정: Windows는 PyInstaller + Inno Setup, macOS는 PyInstaller + pkg/dmg로 배포한다.
+
+포함 항목:
+
+- 앱 실행 파일
+- PySide6/Qt runtime
+- FFmpeg/FFprobe
+- 폰트/아이콘 assets
+
+제외 항목:
+
+- Ollama
+- 로컬 VLM 모델
+- llama-server
+
+## D-006. Secret 관리
+
+결정: OpenAI API key는 git, 릴리즈 asset, 리포트, observations JSON에 기록하지 않는다.
+
+허용 경로:
+
+- `OPENAI_API_KEY` OS 환경변수
+- `.env` 또는 `.env.local` 파일
+- 앱 사용자 데이터 폴더의 `settings.json`
+
+대화나 이슈에 노출된 key는 운영 전에 반드시 폐기하고 새 key로 교체한다.

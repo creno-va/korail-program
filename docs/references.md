@@ -1,23 +1,22 @@
 # 참고 자료
 
-초기 기술 결정에 참고한 공식 문서와 모델 문서다.
+## OpenAI API
 
-## Python 런타임과 패키징
+- OpenAI Responses API: https://platform.openai.com/docs/api-reference/responses
+- OpenAI image input guide: https://platform.openai.com/docs/guides/images
+- OpenAI Python SDK: https://github.com/openai/openai-python
 
-- PyPy compatibility: https://pypy.org/compat.html
-- PyTorch local install: https://pytorch.org/get-started/locally/
+## Python 패키징
+
 - PyInstaller manual: https://pyinstaller.org/en/stable/
 - PyInstaller spec files and macOS BUNDLE: https://pyinstaller.org/en/latest/spec-files.html
 - Apple macOS package distribution: https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution
 - GitHub-hosted macOS runner labels: https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job
-- Ollama macOS install/runtime paths: https://docs.ollama.com/macos
 
 ## GUI
 
 - Qt for Python LGPL: https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html
-- PyQt licensing: https://riverbankcomputing.com/software/pyqt
 - KRDS Korea Design System: https://www.krds.go.kr/
-- KRDS developer guide: https://www.krds.go.kr/html/site/outline/outline_03.html
 - QtAwesome Material Design Icons support: https://pypi.org/project/QtAwesome/
 
 ## Typography
@@ -28,11 +27,3 @@
 ## OCR
 
 - PaddleOCR installation: https://www.paddleocr.ai/main/en/version3.x/installation.html
-- PaddleOCR FAQ: https://www.paddleocr.ai/main/en/FAQ.html
-
-## Multimodal LLM
-
-- Gemma 4 overview: https://ai.google.dev/gemma/docs/core
-- Gemma 4 model card: https://ai.google.dev/gemma/docs/core/model_card_4
-- Ollama Gemma 4: https://ollama.com/library/gemma4
-- Ollama Qwen2.5-VL: https://ollama.com/library/qwen2.5vl
