@@ -5,6 +5,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
+from korail_program.core.event_merger import format_section_label
 from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel
 from korail_program.core.timecode import format_timecode
 
@@ -17,6 +18,7 @@ def write_reports(
     suspicious_records: list[dict[str, object]],
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
+    video_titles: list[str] | None = None,
     ocr_observation_count: int = 0,
     failure_summary: str | None = None,
 ) -> tuple[Path, Path, Path]:
@@ -58,6 +60,7 @@ def write_reports(
         suspicious_records=suspicious_records,
         events=events,
         failures=failures,
+        video_titles=video_titles,
     )
     return markdown_path, html_path, pdf_path
 
@@ -111,7 +114,8 @@ def build_markdown_report(
                 f"{event.risk_level.value} | "
                 f"{format_timecode(event.start_time_ms)} | "
                 f"{format_timecode(event.end_time_ms)} | "
-                f"{event.section_start} ~ {event.section_end}: {event.summary} | "
+                f"{format_section_label(event.section_start, event.section_end)}: "
+                f"{event.summary} | "
                 f"{event.capture_count} |"
             )
 
@@ -287,7 +291,7 @@ def _event_row(event: AnalysisEvent) -> str:
         f"<td>{_risk_chip(event.risk_level)}</td>"
         f"<td>{format_timecode(event.start_time_ms)}</td>"
         f"<td>{format_timecode(event.end_time_ms)}</td>"
-        f"<td>{escape(event.section_start)} ~ {escape(event.section_end)}</td>"
+        f"<td>{escape(format_section_label(event.section_start, event.section_end))}</td>"
         f"<td>{escape(event.summary)}</td>"
         f"<td>{event.capture_count}</td>"
         "</tr>"

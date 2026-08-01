@@ -3,7 +3,7 @@
 #define MyAppExeName "KorailAnalyzer.exe"
 #define MyAppVersion GetEnv("KORAIL_APP_VERSION")
 #if MyAppVersion == ""
-  #define MyAppVersion "0.8.0"
+  #define MyAppVersion "0.9.0"
 #endif
 #define MySourceDir "..\..\dist\KorailAnalyzer"
 #define MyOutputDir "..\..\dist\installer"

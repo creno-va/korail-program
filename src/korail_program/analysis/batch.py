@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -390,6 +391,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         suspicious_records=suspicious_records,
         events=events,
         failures=failures,
+        video_titles=[Path(item.file_path).name for item in metadata_items],
         failure_summary=failure_summary,
     )
 
@@ -633,6 +635,11 @@ def _read_station_observation(
     else:
         raise TypeError(f"Unsupported OCR engine: {engine!r}")
 
+    if not station_name:
+        station_name = _station_name_from_raw_text(raw_text)
+        if station_name:
+            confidence = max(confidence, 0.5)
+
     candidate_text = station_name or raw_text
     if matcher is not None and candidate_text:
         match = matcher.match(candidate_text)
@@ -653,6 +660,12 @@ def _read_station_observation(
     )
 
 
+def _station_name_from_raw_text(raw_text: str) -> str | None:
+    normalized = " ".join(raw_text.split())
+    match = re.search(r"[가-힣A-Za-z0-9·ㆍ]{1,20}역", normalized)
+    return match.group(0) if match else None
+
+
 def _build_section_mappings(
     ocr_observations: list[OcrObservation],
     *,
@@ -668,22 +681,36 @@ def _build_section_mappings(
 
     for video_id, observations in by_video.items():
         unique = _deduplicate_station_observations(observations)
+        video_duration_ms = max(
+            duration_by_video.get(video_id, 0),
+            unique[-1].video_time_ms + sample_interval_ms,
+        )
         if len(unique) == 1:
             only = unique[0]
-            end_time_ms = (
-                duration_by_video.get(video_id, 0) or only.video_time_ms + sample_interval_ms
-            )
             sections.append(
                 SectionMapping(
                     video_id=video_id,
-                    start_time_ms=only.video_time_ms,
-                    end_time_ms=max(end_time_ms, only.video_time_ms + sample_interval_ms),
+                    start_time_ms=0,
+                    end_time_ms=video_duration_ms,
                     section_start=only.station_name or "구간 미확인",
-                    section_end="구간 미확인",
+                    section_end=only.station_name or "구간 미확인",
                     confidence=only.confidence,
                 )
             )
             continue
+
+        first = unique[0]
+        if first.video_time_ms > 0:
+            sections.append(
+                SectionMapping(
+                    video_id=video_id,
+                    start_time_ms=0,
+                    end_time_ms=first.video_time_ms,
+                    section_start=first.station_name or "구간 미확인",
+                    section_end=first.station_name or "구간 미확인",
+                    confidence=first.confidence,
+                )
+            )
 
         for current, next_item in zip(unique, unique[1:], strict=False):
             if next_item.video_time_ms <= current.video_time_ms:
@@ -698,6 +725,19 @@ def _build_section_mappings(
                     confidence=round(min(current.confidence, next_item.confidence), 4),
                 )
             )
+
+        last = unique[-1]
+        if last.video_time_ms < video_duration_ms:
+            sections.append(
+                SectionMapping(
+                    video_id=video_id,
+                    start_time_ms=last.video_time_ms,
+                    end_time_ms=video_duration_ms,
+                    section_start=last.station_name or "구간 미확인",
+                    section_end=last.station_name or "구간 미확인",
+                    confidence=last.confidence,
+                )
+            )
     return sections
 
 
@@ -707,8 +747,14 @@ def _deduplicate_station_observations(
     unique: list[OcrObservation] = []
     for observation in sorted(observations, key=lambda item: item.video_time_ms):
         if unique and unique[-1].station_name == observation.station_name:
-            if observation.confidence > unique[-1].confidence:
-                unique[-1] = observation
+            previous = unique[-1]
+            if observation.confidence > previous.confidence:
+                unique[-1] = replace(
+                    previous,
+                    raw_text=observation.raw_text,
+                    confidence=observation.confidence,
+                    method=observation.method,
+                )
             continue
         unique.append(observation)
     return unique

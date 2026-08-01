@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from korail_program.core.event_merger import merge_judge_observations
+from korail_program.core.event_merger import format_section_label, merge_judge_observations
 from korail_program.core.models import JudgeObservation, RiskLevel, SectionMapping
 
 
@@ -26,6 +26,12 @@ def judge_observation(
 
 
 class EventMergerTests(unittest.TestCase):
+    def test_section_labels_distinguish_route_and_station_vicinity(self) -> None:
+        self.assertEqual(format_section_label("서울역", "대전역"), "서울역 - 대전역")
+        self.assertEqual(format_section_label("서울역", "서울역"), "서울역 인근")
+        self.assertEqual(format_section_label("서울역", "구간 미확인"), "서울역 인근")
+        self.assertEqual(format_section_label("", None), "구간 미확인")
+
     def test_merge_contiguous_risky_frames(self) -> None:
         observations = [
             judge_observation(754000, RiskLevel.HIGH),

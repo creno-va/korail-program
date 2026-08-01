@@ -8,6 +8,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QMimeData, QUrl
 from PySide6.QtWidgets import QApplication, QLabel
 
 from korail_program.app.main_window import MainWindow, _build_frame_entries
@@ -15,6 +16,29 @@ from korail_program.core.video_files import collect_video_candidates
 
 
 class AppVideoCandidateTests(unittest.TestCase):
+    def test_window_accepts_video_drop_from_any_page(self) -> None:
+        app = QApplication.instance() or QApplication([])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            video_path = Path(tmp_dir) / "window-drop.mp4"
+            video_path.write_bytes(b"")
+            mime_data = QMimeData()
+            mime_data.setUrls([QUrl.fromLocalFile(str(video_path))])
+            event = mock.Mock()
+            event.mimeData.return_value = mime_data
+
+            window = MainWindow()
+            try:
+                self.assertTrue(window.acceptDrops())
+                with mock.patch.object(window, "add_video_files") as add_video_files:
+                    window.dropEvent(event)
+
+                add_video_files.assert_called_once_with([video_path])
+                event.acceptProposedAction.assert_called_once_with()
+            finally:
+                window.close()
+                app.processEvents()
+
     def test_home_stepper_and_detail_navigation_share_analysis_state(self) -> None:
         app = QApplication.instance() or QApplication([])
 
@@ -30,6 +54,12 @@ class AppVideoCandidateTests(unittest.TestCase):
                 self.assertEqual(
                     window.home_page.findChild(QLabel, "HomeTitle").text(),
                     "전차선로 지장수목 분석",
+                )
+                self.assertFalse(window.home_page.korail_logo.pixmap().isNull())
+                self.assertFalse(window.home_page.crenova_logo.pixmap().isNull())
+                self.assertEqual(
+                    window.home_page.findChild(QLabel, "HomeBrandingSeparator").text(),
+                    "×",
                 )
                 self.assertTrue(
                     window.home_page._step_frames[0].isAncestorOf(

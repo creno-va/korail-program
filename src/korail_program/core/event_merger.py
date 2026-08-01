@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from unicodedata import normalize
 
 from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel, SectionMapping
 
 UNKNOWN_SECTION = "구간 미확인"
+
+
+def format_section_label(section_start: object, section_end: object) -> str:
+    """Return one consistent, uncertainty-aware section label."""
+
+    start = _normalize_section_name(section_start)
+    end = _normalize_section_name(section_end)
+    known_start = start if start != UNKNOWN_SECTION else None
+    known_end = end if end != UNKNOWN_SECTION else None
+    if known_start and known_end and known_start != known_end:
+        return f"{known_start} - {known_end}"
+    nearby = known_start or known_end
+    return f"{nearby} 인근" if nearby else UNKNOWN_SECTION
+
+
+def _normalize_section_name(value: object) -> str:
+    text = normalize("NFC", str(value or "").strip())
+    if not text or text in {"-", "미확인", UNKNOWN_SECTION}:
+        return UNKNOWN_SECTION
+    return text
 
 
 def merge_judge_observations(

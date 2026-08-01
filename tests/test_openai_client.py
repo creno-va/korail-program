@@ -9,7 +9,9 @@ from korail_program.judge.openai_client import (
     build_openai_responses_payload,
     encode_image_data_url,
     extract_openai_output_text,
-    test_openai_connection,
+)
+from korail_program.judge.openai_client import (
+    test_openai_connection as verify_openai_connection,
 )
 from korail_program.judge.prompts import JUDGE_SYSTEM_PROMPT, build_frame_judge_prompt
 
@@ -86,7 +88,7 @@ class OpenAIClientTests(unittest.TestCase):
                 return b'{"id":"gpt-5.6-terra"}'
 
         with mock.patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
-            body = test_openai_connection(
+            body = verify_openai_connection(
                 base_url="https://api.openai.com/v1",
                 api_key="test-key",
                 model="gpt-5.6-terra",

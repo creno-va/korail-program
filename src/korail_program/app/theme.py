@@ -69,6 +69,18 @@ QLabel#HomeFileName {
     font-weight: 600;
 }
 
+QFrame#HomeBranding,
+QLabel#HomeBrandLogo {
+    background: #ffffff;
+    border: none;
+}
+
+QLabel#HomeBrandingSeparator {
+    color: #b0b8c1;
+    font-size: 18px;
+    font-weight: 500;
+}
+
 QFrame#DetailNavigation {
     background: #ffffff;
     border: none;

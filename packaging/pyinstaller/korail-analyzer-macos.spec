@@ -11,6 +11,10 @@ APP_VERSION = os.environ.get("KORAIL_APP_VERSION", "0.0.0")
 datas = [
     (str(ROOT / "README.md"), "."),
     (str(ROOT / "src" / "korail_program" / "assets" / "fonts"), "korail_program/assets/fonts"),
+    (
+        str(ROOT / "src" / "korail_program" / "assets" / "branding"),
+        "korail_program/assets/branding",
+    ),
 ]
 datas += collect_data_files("qtawesome")
 datas += collect_data_files("certifi")

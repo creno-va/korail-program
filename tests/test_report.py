@@ -6,11 +6,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from korail_program.analysis.pdf_report import _normalize_pdf_text
 from korail_program.analysis.report import build_html_report, build_markdown_report, write_reports
 from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel
 
 
 class ReportTests(unittest.TestCase):
+    def test_pdf_text_normalizer_repairs_utf8_mojibake(self) -> None:
+        mojibake = "서울_대전.mp4".encode().decode("latin-1")
+        self.assertEqual(_normalize_pdf_text(mojibake), "서울_대전.mp4")
+
     def test_reports_show_risk_level_without_probability_score(self) -> None:
         observation = JudgeObservation(
             video_id=1,
@@ -94,7 +99,7 @@ class ReportTests(unittest.TestCase):
                 capture.write_bytes(image_bytes)
                 records.append(
                     {
-                        "video_name": "sample.mp4",
+                        "video_name": "서울_대전_선로점검.mp4",
                         "frame_path": str(capture),
                         "capture_path": str(capture),
                         "observation": observation,
@@ -122,10 +127,19 @@ class ReportTests(unittest.TestCase):
                     )
                 ],
                 failures=[],
+                video_titles=["서울_대전_선로점검.mp4"],
             )
 
             self.assertTrue(pdf_path.exists())
-            self.assertEqual(len(PdfReader(str(pdf_path)).pages), len(records))
+            reader = PdfReader(str(pdf_path))
+            self.assertEqual(len(reader.pages), len(records) + 1)
+            extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            self.assertEqual(reader.metadata.title, "지장수목 의심 프레임 분석 리포트")
+            self.assertIn("서울_대전_선로점검.mp4", extracted_text)
+            self.assertIn("영상 파일", extracted_text)
+            self.assertIn("재생 시점", extracted_text)
+            self.assertIn("OCR 추정 구간", extracted_text)
+            self.assertIn("서울 - 대전", extracted_text)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from importlib import resources
+
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from korail_program.app.widgets import ActionButton, ProgressTrack
@@ -88,6 +91,10 @@ class WorkflowHomePage(QFrame):
         steps.addWidget(analysis_step, stretch=1)
         steps.addWidget(report_step, stretch=1)
         content_layout.addLayout(steps)
+        content_layout.addWidget(
+            self._build_branding(),
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
 
         page_layout.addStretch(1)
         page_layout.addWidget(content, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -104,6 +111,62 @@ class WorkflowHomePage(QFrame):
             self.detail_button,
             alignment=Qt.AlignmentFlag.AlignHCenter,
         )
+
+    def _build_branding(self) -> QFrame:
+        branding = QFrame()
+        branding.setObjectName("HomeBranding")
+        branding_layout = QHBoxLayout(branding)
+        branding_layout.setContentsMargins(0, 0, 0, 0)
+        branding_layout.setSpacing(24)
+
+        self.korail_logo = self._build_logo_label(
+            file_name="korail-logo.png",
+            accessible_name="KORAIL 한국철도 로고",
+            maximum_width=190,
+            maximum_height=34,
+        )
+        separator = QLabel("×")
+        separator.setObjectName("HomeBrandingSeparator")
+        separator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        separator.setFixedWidth(20)
+
+        self.crenova_logo = self._build_logo_label(
+            file_name="crenova-logo-black.png",
+            accessible_name="CRENOVA 로고",
+            maximum_width=118,
+            maximum_height=72,
+        )
+
+        branding_layout.addWidget(self.korail_logo)
+        branding_layout.addWidget(separator)
+        branding_layout.addWidget(self.crenova_logo)
+        return branding
+
+    @staticmethod
+    def _build_logo_label(
+        *,
+        file_name: str,
+        accessible_name: str,
+        maximum_width: int,
+        maximum_height: int,
+    ) -> QLabel:
+        label = QLabel()
+        label.setObjectName("HomeBrandLogo")
+        label.setAccessibleName(accessible_name)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        logo_resource = resources.files("korail_program.assets.branding").joinpath(file_name)
+        with resources.as_file(logo_resource) as logo_path:
+            pixmap = QPixmap(str(logo_path))
+        label.setPixmap(
+            pixmap.scaled(
+                maximum_width,
+                maximum_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        return label
 
     @staticmethod
     def _build_step(

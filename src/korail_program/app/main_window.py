@@ -52,6 +52,7 @@ from korail_program.config import (
     DEFAULT_OPENAI_API_KEY_ENV,
     DEFAULT_VISION_MODEL,
 )
+from korail_program.core.event_merger import format_section_label
 from korail_program.core.models import RiskLevel
 from korail_program.core.timecode import format_timecode
 from korail_program.core.video_files import collect_video_candidates
@@ -62,7 +63,7 @@ from korail_program.runtime import (
     user_data_dir,
 )
 
-DETAIL_FIELDS = ("영상", "구간", "타임코드", "위험도", "OCR", "검수")
+DETAIL_FIELDS = ("영상", "OCR 추정 구간", "타임코드", "위험도", "OCR", "검수")
 
 
 class AnalysisWorker(QThread):
@@ -113,6 +114,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("전차선로 지장수목 분석")
         self.resize(1480, 920)
         self.setMinimumSize(1180, 760)
+        self.setAcceptDrops(True)
         self._build_ui()
         self._apply_theme()
         self._refresh_runtime_status()
@@ -172,6 +174,26 @@ class MainWindow(QMainWindow):
     def _show_detail_page(self) -> None:
         self.page_stack.setCurrentWidget(self.detail_page)
         self._sync_primary_actions()
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if _local_drop_paths(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802
+        if _local_drop_paths(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        paths = _local_drop_paths(event.mimeData())
+        if paths:
+            self.add_video_files(paths)
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -958,14 +980,14 @@ class MainWindow(QMainWindow):
         self.detail_status_chip.set_tone("warning")
         section_start = event.get("section_start", "구간 미확인")
         section_end = event.get("section_end", "구간 미확인")
-        section = f"{section_start} ~ {section_end}"
+        section = format_section_label(section_start, section_end)
         start_ms = int(event.get("start_time_ms", 0))
         end_ms = int(event.get("end_time_ms", start_ms))
         frame_time_ms = int(event.get("frame_time_ms", start_ms))
         risk = RiskLevel.coerce(event.get("risk_level"))
         video_name = self._selected_video_path.name if self._selected_video_path else "-"
         self.detail_labels["영상"].setText(video_name)
-        self.detail_labels["구간"].setText(section)
+        self.detail_labels["OCR 추정 구간"].setText(section)
         self.detail_labels["타임코드"].setText(
             f"{format_timecode(start_ms)} - {format_timecode(end_ms)}"
         )
@@ -1005,7 +1027,7 @@ class MainWindow(QMainWindow):
         self.detail_status_chip.setText("영상 선택")
         self.detail_status_chip.set_tone("neutral")
         self.detail_labels["영상"].setText(queue_file.display_name)
-        self.detail_labels["구간"].setText("분석 전")
+        self.detail_labels["OCR 추정 구간"].setText("분석 전")
         self.detail_labels["타임코드"].setText("-")
         self.detail_labels["위험도"].setText("-")
         self.detail_labels["OCR"].setText("분석 전")
@@ -1232,6 +1254,12 @@ class MainWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.log_panel.append(message)
+
+
+def _local_drop_paths(mime_data) -> list[Path]:
+    if not mime_data.hasUrls():
+        return []
+    return [Path(url.toLocalFile()) for url in mime_data.urls() if url.isLocalFile()]
 
 
 def _event_empty_message(result: BatchAnalysisResult) -> str:
