@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 
 from korail_program.core.event_merger import format_section_label
-from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel
+from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel, SectionMapping
 from korail_program.core.timecode import format_timecode
 
 
@@ -18,6 +18,7 @@ def write_reports(
     suspicious_records: list[dict[str, object]],
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
+    sections: list[SectionMapping] | None = None,
     video_titles: list[str] | None = None,
     ocr_observation_count: int = 0,
     failure_summary: str | None = None,
@@ -60,6 +61,7 @@ def write_reports(
         suspicious_records=suspicious_records,
         events=events,
         failures=failures,
+        sections=sections,
         video_titles=video_titles,
     )
     return markdown_path, html_path, pdf_path

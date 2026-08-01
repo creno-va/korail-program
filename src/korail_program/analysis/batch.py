@@ -391,6 +391,7 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
         suspicious_records=suspicious_records,
         events=events,
         failures=failures,
+        sections=sections,
         video_titles=[Path(item.file_path).name for item in metadata_items],
         failure_summary=failure_summary,
     )

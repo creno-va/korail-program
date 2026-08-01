@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
 
 from korail_program.app.icons import material_icon
 from korail_program.app.theme import STATUS_COLORS
-from korail_program.core.event_merger import format_section_label
 from korail_program.core.models import RiskLevel
 from korail_program.core.timecode import format_timecode
 
@@ -343,10 +342,6 @@ class EventCard(QFrame):
         start_ms = int(self.payload.get("start_time_ms", 0))
         end_ms = int(self.payload.get("end_time_ms", 0))
         frame_time_ms = int(self.payload.get("frame_time_ms", start_ms))
-        section_start = self.payload.get("section_start", "구간 미확인")
-        section_end = self.payload.get("section_end", "구간 미확인")
-        section = format_section_label(section_start, section_end)
-
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
@@ -377,7 +372,7 @@ class EventCard(QFrame):
         top.addWidget(title, stretch=1)
         top.addWidget(StatusChip(risk.value, _tone_for_risk(risk)))
 
-        meta = QLabel(f"{video_name} · {format_timecode(end_ms)}까지\n{section}")
+        meta = QLabel(f"{video_name} · {format_timecode(end_ms)}까지")
         meta.setObjectName("Tiny")
         meta.setWordWrap(True)
 

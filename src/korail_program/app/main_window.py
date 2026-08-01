@@ -905,11 +905,28 @@ class MainWindow(QMainWindow):
             for item in observations_payload.get("videos", [])
         }
         records = observations_payload.get("records", [])
+        sections = observations_payload.get("sections", [])
 
-        frame_entries = _build_frame_entries(events_payload, records)
+        frame_entries = _build_frame_entries(events_payload, records, sections)
+        previous_group: tuple[int, str] | None = None
         for index, (frame_payload, capture_path) in enumerate(frame_entries, start=1):
             self._event_payloads[index] = frame_payload
-            video_name = video_lookup.get(int(frame_payload.get("video_id", 0)), "영상")
+            video_id = int(frame_payload.get("video_id", 0))
+            video_name = video_lookup.get(video_id, "영상")
+            section_label = format_section_label(
+                frame_payload.get("section_start", "구간 미확인"),
+                frame_payload.get("section_end", "구간 미확인"),
+            )
+            group = (video_id, section_label)
+            if group != previous_group:
+                section_header = QLabel(section_label)
+                section_header.setObjectName("FrameSectionHeader")
+                self.events_list.add_card(
+                    ("section", video_id, section_label, index),
+                    section_header,
+                    selectable=False,
+                )
+                previous_group = group
             self.events_list.add_card(
                 index,
                 EventCard(frame_payload, video_name=video_name, capture_path=capture_path),
@@ -1355,6 +1372,7 @@ def _safe_report_dir(path: Path) -> str:
 def _build_frame_entries(
     events_payload: object,
     records_payload: object,
+    sections_payload: object = None,
 ) -> list[tuple[dict[str, object], Path | None]]:
     events = (
         [item for item in events_payload if isinstance(item, dict)]
@@ -1362,7 +1380,14 @@ def _build_frame_entries(
         else []
     )
     records = records_payload if isinstance(records_payload, list) else []
-    entries: list[tuple[dict[str, object], Path | None]] = []
+    sections = (
+        [item for item in sections_payload if isinstance(item, dict)]
+        if isinstance(sections_payload, list)
+        else []
+    )
+    unique_entries: dict[
+        tuple[int, int], tuple[dict[str, object], Path | None]
+    ] = {}
 
     for record in records:
         if not isinstance(record, dict) or not record.get("capture_path"):
@@ -1373,6 +1398,11 @@ def _build_frame_entries(
         video_id = int(observation.get("video_id", record.get("video_id", 0)))
         frame_time_ms = int(observation.get("video_time_ms", record.get("video_time_ms", 0)))
         event = _find_event_for_frame(events, video_id=video_id, frame_time_ms=frame_time_ms)
+        section = _find_section_for_frame(
+            sections,
+            video_id=video_id,
+            frame_time_ms=frame_time_ms,
+        )
         payload = dict(event) if event is not None else {}
         payload.update(
             {
@@ -1386,20 +1416,35 @@ def _build_frame_entries(
                 "summary": observation.get("evidence") or payload.get("summary", ""),
             }
         )
-        entries.append((payload, Path(str(record["capture_path"]))))
+        if section is not None:
+            payload["section_start"] = section.get("section_start", "구간 미확인")
+            payload["section_end"] = section.get("section_end", "구간 미확인")
+        key = (video_id, frame_time_ms)
+        candidate = (payload, Path(str(record["capture_path"])))
+        current = unique_entries.get(key)
+        if current is None or _frame_entry_score(candidate) > _frame_entry_score(current):
+            unique_entries[key] = candidate
 
-    if entries:
+    if unique_entries:
         return sorted(
-            entries,
+            unique_entries.values(),
             key=lambda item: (
                 int(item[0].get("video_id", 0)),
                 int(item[0].get("frame_time_ms", 0)),
             ),
         )
 
-    for event in events:
-        entries.append((dict(event), _find_capture_for_event(event, records)))
-    return entries
+    return [(dict(event), _find_capture_for_event(event, records)) for event in events]
+
+
+def _frame_entry_score(
+    entry: tuple[dict[str, object], Path | None],
+) -> tuple[int, int]:
+    payload, capture_path = entry
+    return (
+        RiskLevel.coerce(payload.get("risk_level")).priority,
+        len(str(payload.get("summary", ""))) + int(capture_path is not None),
+    )
 
 
 def _find_event_for_frame(
@@ -1415,6 +1460,22 @@ def _find_event_for_frame(
         end_ms = int(event.get("end_time_ms", start_ms))
         if start_ms <= frame_time_ms < end_ms:
             return event
+    return None
+
+
+def _find_section_for_frame(
+    sections: list[dict[str, object]],
+    *,
+    video_id: int,
+    frame_time_ms: int,
+) -> dict[str, object] | None:
+    for section in sections:
+        if int(section.get("video_id", 0)) != video_id:
+            continue
+        start_ms = int(section.get("start_time_ms", 0))
+        end_ms = int(section.get("end_time_ms", start_ms))
+        if start_ms <= frame_time_ms < end_ms:
+            return section
     return None
 
 

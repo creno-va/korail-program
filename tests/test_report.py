@@ -8,7 +8,12 @@ from pathlib import Path
 
 from korail_program.analysis.pdf_report import _normalize_pdf_text
 from korail_program.analysis.report import build_html_report, build_markdown_report, write_reports
-from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel
+from korail_program.core.models import (
+    AnalysisEvent,
+    JudgeObservation,
+    RiskLevel,
+    SectionMapping,
+)
 
 
 class ReportTests(unittest.TestCase):
@@ -69,7 +74,7 @@ class ReportTests(unittest.TestCase):
         importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
         "PDF verification dependencies are not installed",
     )
-    def test_pdf_report_uses_template_layout_with_two_frames_per_page(self) -> None:
+    def test_pdf_report_groups_unique_frames_under_each_section(self) -> None:
         from pypdf import PdfReader
 
         image_bytes = base64.b64decode(
@@ -83,7 +88,7 @@ class ReportTests(unittest.TestCase):
                 has_tree=True,
                 bamboo_likely=0.1,
                 near_catenary=True,
-                risk_level=RiskLevel.HIGH,
+                risk_level=(RiskLevel.HIGH, RiskLevel.MEDIUM, RiskLevel.LOW)[index - 1],
                 bbox_hint=None,
                 evidence=f"프레임 {index} 판단 근거",
                 needs_human_review=False,
@@ -105,6 +110,25 @@ class ReportTests(unittest.TestCase):
                         "observation": observation,
                     }
                 )
+            duplicate = JudgeObservation(
+                video_id=1,
+                video_time_ms=24_000,
+                has_tree=True,
+                bamboo_likely=0.1,
+                near_catenary=False,
+                risk_level=RiskLevel.LOW,
+                bbox_hint=None,
+                evidence="같은 프레임의 중복 평가",
+                needs_human_review=True,
+            )
+            records.append(
+                {
+                    "video_name": "서울_대전_선로점검.mp4",
+                    "frame_path": str(output_dir / "capture_2.png"),
+                    "capture_path": str(output_dir / "capture_2.png"),
+                    "observation": duplicate,
+                }
+            )
 
             _, _, pdf_path = write_reports(
                 output_dir=output_dir,
@@ -127,6 +151,24 @@ class ReportTests(unittest.TestCase):
                     )
                 ],
                 failures=[],
+                sections=[
+                    SectionMapping(
+                        video_id=1,
+                        start_time_ms=0,
+                        end_time_ms=25_000,
+                        section_start="서울",
+                        section_end="대전",
+                        confidence=0.9,
+                    ),
+                    SectionMapping(
+                        video_id=1,
+                        start_time_ms=25_000,
+                        end_time_ms=40_000,
+                        section_start="대전",
+                        section_end="대구",
+                        confidence=0.9,
+                    ),
+                ],
                 video_titles=["서울_대전_선로점검.mp4"],
             )
 
@@ -135,6 +177,7 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(len(reader.pages), 2)
             extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
             first_page_text = reader.pages[0].extract_text() or ""
+            second_page_text = reader.pages[1].extract_text() or ""
             self.assertEqual(reader.metadata.title, "전차선로 지장수목 분석 REPORT")
             self.assertIn("서울_대전_선로점검.mp4", extracted_text)
             self.assertIn("분석현황", extracted_text)
@@ -143,8 +186,13 @@ class ReportTests(unittest.TestCase):
             self.assertIn("분석영상", extracted_text)
             self.assertIn("OCR 추정 구간", extracted_text)
             self.assertIn("서울 - 대전", extracted_text)
+            self.assertIn("분석 구간  서울 - 대전", first_page_text)
+            self.assertIn("분석 구간  대전 - 대구", second_page_text)
             self.assertIn("프레임 1 판단 근거", first_page_text)
             self.assertIn("프레임 2 판단 근거", first_page_text)
+            self.assertIn("프레임 3 판단 근거", second_page_text)
+            self.assertEqual(extracted_text.count("프레임 2 판단 근거"), 1)
+            self.assertNotIn("같은 프레임의 중복 평가", extracted_text)
             self.assertNotIn("촬영날짜", extracted_text)
             self.assertNotIn("위치", extracted_text)
 

@@ -31,6 +31,13 @@ class TuningDefaultsTests(unittest.TestCase):
         self.assertIn("use 낮음 as a watchlist", JUDGE_SYSTEM_PROMPT)
         self.assertIn("Use 낮음, not 없음", prompt)
 
+    def test_prompt_prefers_medium_for_uncertain_forward_corridor_clearance(self) -> None:
+        prompt = build_frame_judge_prompt()
+
+        self.assertIn("Prefer recall at the 중간/낮음 boundary", JUDGE_SYSTEM_PROMPT)
+        self.assertIn("distance, perspective, blur, or partial occlusion", prompt)
+        self.assertIn("keep 중간 and set needs_human_review=true", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

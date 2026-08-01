@@ -11,8 +11,8 @@ Windows/macOS 납품판은 Python 개발 환경이 없는 PC에서도 설치 파
 - 디자인: Pretendard GOV, Material Design Icons, grayscale + success/warning/error 상태색
 - 프레임 judge: OpenAI Responses API + vision-capable GPT model, 기본 `gpt-5.6-terra`
 - 역명/OCR: 기본 GPT VLM OCR + 선택적 역명 사전 보정
-- 결과: 분석현황과 사진 2건씩을 배치한 PDF, 저장 직후 인앱 미리보기, 캡처 이미지,
-  HTML/Markdown 리포트, JSON 산출물
+- 결과: 구간별 고유 탐지 프레임을 세로로 정리한 PDF, 저장 직후 인앱 미리보기,
+  캡처 이미지, HTML/Markdown 리포트, JSON 산출물
 
 ## API Key 설정
 

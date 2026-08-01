@@ -178,12 +178,43 @@ class AppVideoCandidateTests(unittest.TestCase):
             }
             for index, video_time_ms in enumerate((15_000, 30_000), start=1)
         ]
+        records.append(
+            {
+                "capture_path": "duplicate-low.jpg",
+                "observation": {
+                    "video_id": 1,
+                    "video_time_ms": 15_000,
+                    "risk_level": "낮음",
+                    "evidence": "같은 프레임의 중복 평가",
+                },
+            }
+        )
+        sections = [
+            {
+                "video_id": 1,
+                "start_time_ms": 0,
+                "end_time_ms": 20_000,
+                "section_start": "서울",
+                "section_end": "대전",
+            },
+            {
+                "video_id": 1,
+                "start_time_ms": 20_000,
+                "end_time_ms": 40_000,
+                "section_start": "대전",
+                "section_end": "대구",
+            },
+        ]
 
-        entries = _build_frame_entries(events, records)
+        entries = _build_frame_entries(events, records, sections)
 
         self.assertEqual(len(entries), 2)
         self.assertEqual([item[0]["frame_time_ms"] for item in entries], [15_000, 30_000])
         self.assertEqual([item[0]["summary"] for item in entries], ["프레임 1", "프레임 2"])
+        self.assertEqual(entries[0][0]["section_start"], "서울")
+        self.assertEqual(entries[0][0]["section_end"], "대전")
+        self.assertEqual(entries[1][0]["section_start"], "대전")
+        self.assertEqual(entries[1][0]["section_end"], "대구")
 
     def test_collects_multiple_files_and_folder_contents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

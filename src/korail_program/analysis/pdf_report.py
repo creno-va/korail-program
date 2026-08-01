@@ -1,8 +1,9 @@
-"""A4 field report with two suspicious frames per page."""
+"""A4 field report grouped by section with one evaluation per unique frame."""
 
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 from importlib import resources
@@ -10,7 +11,12 @@ from pathlib import Path
 from unicodedata import normalize
 
 from korail_program.core.event_merger import format_section_label
-from korail_program.core.models import AnalysisEvent, JudgeObservation, RiskLevel
+from korail_program.core.models import (
+    AnalysisEvent,
+    JudgeObservation,
+    RiskLevel,
+    SectionMapping,
+)
 from korail_program.core.timecode import format_timecode
 
 _FONT_REGULAR = "PretendardGOV-PDF-Regular"
@@ -24,6 +30,22 @@ _RISK_LABELS = {
 }
 
 
+@dataclass(slots=True)
+class _SectionGroup:
+    video_id: int
+    video_name: str
+    section_label: str
+    records: list[dict[str, object]]
+
+
+@dataclass(slots=True)
+class _ReportPage:
+    video_name: str
+    section_label: str
+    records: list[dict[str, object]]
+    continued: bool = False
+
+
 def write_pdf_report(
     *,
     output_dir: Path,
@@ -32,9 +54,10 @@ def write_pdf_report(
     suspicious_records: list[dict[str, object]],
     events: list[AnalysisEvent],
     failures: list[dict[str, object]],
+    sections: list[SectionMapping] | None = None,
     video_titles: list[str] | None = None,
 ) -> Path:
-    """Write a template-style report with up to two capture cells per A4 page."""
+    """Write unique suspicious frames as a section-grouped vertical list."""
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -54,19 +77,31 @@ def write_pdf_report(
     document.setCreator("Korail Analyzer")
     document.setSubject("영상 기반 전차선로 지장수목 분석 결과")
 
-    normalized_titles = _video_titles(video_titles, suspicious_records)
-    section_labels = _section_labels(events)
+    unique_records = _unique_frame_records(suspicious_records)
+    normalized_titles = _video_titles(video_titles, unique_records)
+    section_groups = _group_records_by_section(
+        unique_records,
+        events=events,
+        sections=sections or [],
+    )
+    report_pages = _build_report_pages(section_groups)
+    section_labels = list(
+        dict.fromkeys(
+            group.section_label
+            for group in section_groups
+            if group.section_label not in _UNKNOWN_SECTION_LABELS
+        )
+    )
     analysis_time = datetime.now().astimezone().strftime("%Y.%m.%d %H:%M")
-    page_records = [
-        suspicious_records[index : index + 2]
-        for index in range(0, len(suspicious_records), 2)
-    ] or [[]]
 
-    for page_number, records in enumerate(page_records, start=1):
+    for page_number, report_page in enumerate(report_pages, start=1):
         _draw_report_page(
             document,
-            records=records,
-            events=events,
+            records=report_page.records,
+            all_records=unique_records,
+            section_label=report_page.section_label,
+            section_video_name=report_page.video_name,
+            section_continued=report_page.continued,
             video_titles=normalized_titles,
             video_count=video_count,
             sampled_frame_count=sampled_frame_count,
@@ -74,7 +109,7 @@ def write_pdf_report(
             section_labels=section_labels,
             analysis_time=analysis_time,
             page_number=page_number,
-            total_pages=len(page_records),
+            total_pages=len(report_pages),
         )
         document.showPage()
 
@@ -103,7 +138,10 @@ def _draw_report_page(
     document,
     *,
     records: list[dict[str, object]],
-    events: list[AnalysisEvent],
+    all_records: list[dict[str, object]],
+    section_label: str,
+    section_video_name: str,
+    section_continued: bool,
     video_titles: list[str],
     video_count: int,
     sampled_frame_count: int,
@@ -156,8 +194,7 @@ def _draw_report_page(
         video_titles=video_titles,
         video_count=video_count,
         section_labels=section_labels,
-        events=events,
-        records=records,
+        records=all_records,
     )
     summary_y = page_height - (78 * mm)
     for index, (label, value) in enumerate(summary_rows):
@@ -171,14 +208,16 @@ def _draw_report_page(
         )
 
     _draw_section_heading(document, x=margin, y=page_height - (119 * mm), text="분석사진")
-    _draw_capture_table(
+    _draw_frame_list(
         document,
         x=margin,
-        top_y=page_height - (127 * mm),
+        top_y=page_height - (128 * mm),
         width=content_width,
-        height=82 * mm,
+        height=132 * mm,
         records=records,
-        events=events,
+        section_label=section_label,
+        video_name=section_video_name,
+        continued=section_continued,
     )
 
     _draw_korail_logo(document, x=margin, y=17 * mm, max_width=42 * mm, max_height=8 * mm)
@@ -212,7 +251,6 @@ def _summary_rows(
     video_titles: list[str],
     video_count: int,
     section_labels: list[str],
-    events: list[AnalysisEvent],
     records: list[dict[str, object]],
 ) -> list[tuple[str, str]]:
     video_summary = _summarize_values(video_titles, fallback=f"분석 영상 {video_count}개")
@@ -222,7 +260,7 @@ def _summary_rows(
     ]
     if section_labels:
         rows.append(("OCR 추정 구간", _summarize_values(section_labels)))
-    rows.append(("탐지결과", _risk_count_text(events, records)))
+    rows.append(("탐지결과", _risk_count_text(records)))
     return rows
 
 
@@ -257,7 +295,7 @@ def _draw_summary_row(
     )
 
 
-def _draw_capture_table(
+def _draw_frame_list(
     document,
     *,
     x: float,
@@ -265,129 +303,177 @@ def _draw_capture_table(
     width: float,
     height: float,
     records: list[dict[str, object]],
-    events: list[AnalysisEvent],
+    section_label: str,
+    video_name: str,
+    continued: bool,
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.units import mm
 
-    bottom_y = top_y - height
-    column_width = width / 2
-    reason_height = 20 * mm
-    caption_height = 9 * mm
-    caption_bottom = bottom_y + reason_height
-    image_bottom = caption_bottom + caption_height
+    banner_height = 10 * mm
+    document.setFillColor(HexColor("#edf6ff"))
+    document.roundRect(
+        x,
+        top_y - banner_height,
+        width,
+        banner_height,
+        2.5 * mm,
+        fill=1,
+        stroke=0,
+    )
+    document.setFillColor(HexColor("#3182f6"))
+    document.roundRect(
+        x,
+        top_y - banner_height,
+        3 * mm,
+        banner_height,
+        1.5 * mm,
+        fill=1,
+        stroke=0,
+    )
 
-    document.setStrokeColor(HexColor("#333333"))
-    document.setLineWidth(0.55)
-    document.rect(x, bottom_y, width, height, fill=0, stroke=1)
-    document.line(x + column_width, bottom_y, x + column_width, top_y)
-    document.line(x, caption_bottom, x + width, caption_bottom)
-    document.line(x, image_bottom, x + width, image_bottom)
+    display_section = section_label or "구간 미확인"
+    if continued:
+        display_section = f"{display_section} (계속)"
+    document.setFillColor(HexColor("#191f28"))
+    document.setFont(_FONT_SEMIBOLD, 10.5)
+    document.drawString(x + (7 * mm), top_y - (6.7 * mm), f"분석 구간  {display_section}")
+    if video_name:
+        document.setFillColor(HexColor("#6b7684"))
+        document.setFont(_FONT_REGULAR, 8)
+        document.drawRightString(
+            x + width - (4 * mm),
+            top_y - (6.4 * mm),
+            _fit_text(
+                video_name,
+                font_name=_FONT_REGULAR,
+                font_size=8,
+                max_width=65 * mm,
+            ),
+        )
 
-    for column in range(2):
-        cell_x = x + (column * column_width)
-        record = records[column] if column < len(records) else None
-        _draw_capture_cell(
+    if not records:
+        document.setFillColor(HexColor("#f7f8fa"))
+        document.roundRect(
+            x,
+            top_y - height,
+            width,
+            height - banner_height - (4 * mm),
+            3 * mm,
+            fill=1,
+            stroke=0,
+        )
+        document.setFillColor(HexColor("#8b95a1"))
+        document.setFont(_FONT_REGULAR, 10)
+        document.drawCentredString(
+            x + (width / 2),
+            top_y - banner_height - ((height - banner_height) / 2),
+            "이 구간에서 탐지된 프레임이 없습니다.",
+        )
+        return
+
+    row_gap = 4 * mm
+    rows_top = top_y - banner_height - (4 * mm)
+    row_height = (height - banner_height - (8 * mm) - row_gap) / 2
+    for index, record in enumerate(records):
+        row_top = rows_top - (index * (row_height + row_gap))
+        _draw_frame_row(
             document,
-            x=cell_x,
-            image_bottom=image_bottom,
-            image_top=top_y,
-            width=column_width,
-            caption_bottom=caption_bottom,
-            reason_bottom=bottom_y,
+            x=x,
+            top_y=row_top,
+            width=width,
+            height=row_height,
             record=record,
-            events=events,
         )
 
 
-def _draw_capture_cell(
+def _draw_frame_row(
     document,
     *,
     x: float,
-    image_bottom: float,
-    image_top: float,
+    top_y: float,
     width: float,
-    caption_bottom: float,
-    reason_bottom: float,
-    record: dict[str, object] | None,
-    events: list[AnalysisEvent],
+    height: float,
+    record: dict[str, object],
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.units import mm
-
-    image_height = image_top - image_bottom
-    if record is None:
-        document.setFillColor(HexColor("#f7f8fa"))
-        document.rect(x, image_bottom, width, image_height, fill=1, stroke=0)
-        document.setFillColor(HexColor("#b0b8c1"))
-        document.setFont(_FONT_REGULAR, 9)
-        document.drawCentredString(
-            x + (width / 2),
-            image_bottom + (image_height / 2),
-            "탐지 프레임 없음",
-        )
-        return
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
     observation = record.get("observation")
     if not isinstance(observation, JudgeObservation):
         raise TypeError("PDF frame record requires a JudgeObservation")
-    event = _matching_event(events, observation)
+
+    bottom_y = top_y - height
+    image_width = 77 * mm
     capture_path = Path(str(record.get("capture_path") or record.get("frame_path") or ""))
     _draw_cropped_image(
         document,
         capture_path=capture_path,
-        x=x + (0.5 * mm),
-        y=image_bottom + (0.5 * mm),
-        width=width - (1 * mm),
-        height=image_height - (1 * mm),
+        x=x,
+        y=bottom_y + (1.5 * mm),
+        width=image_width,
+        height=height - (3 * mm),
     )
 
     risk_label, risk_color = _RISK_LABELS[observation.risk_level]
-    section = (
-        format_section_label(event.section_start, event.section_end)
-        if event is not None
-        else ""
-    )
-    if section in _UNKNOWN_SECTION_LABELS:
-        section = ""
-    caption_parts = [risk_label]
-    if section:
-        caption_parts.append(section)
-    caption_parts.append(format_timecode(observation.video_time_ms))
-    caption = " · ".join(caption_parts)
+    content_x = x + image_width + (7 * mm)
+    content_width = width - image_width - (7 * mm)
+
     document.setFillColor(HexColor(risk_color))
-    document.setFont(_FONT_SEMIBOLD, 10.5)
+    badge_width = max(14 * mm, stringWidth(risk_label, _FONT_SEMIBOLD, 8.5) + (7 * mm))
+    document.roundRect(
+        content_x,
+        top_y - (8 * mm),
+        badge_width,
+        6.5 * mm,
+        3.25 * mm,
+        fill=1,
+        stroke=0,
+    )
+    document.setFillColor(HexColor("#ffffff"))
+    document.setFont(_FONT_SEMIBOLD, 8.5)
     document.drawCentredString(
-        x + (width / 2),
-        caption_bottom + (3 * mm),
-        _fit_text(
-            caption,
-            font_name=_FONT_SEMIBOLD,
-            font_size=10.5,
-            max_width=width - (5 * mm),
-        ),
+        content_x + (badge_width / 2),
+        top_y - (5.7 * mm),
+        risk_label,
+    )
+
+    document.setFillColor(HexColor("#191f28"))
+    document.setFont(_FONT_SEMIBOLD, 11)
+    document.drawString(
+        content_x + badge_width + (4 * mm),
+        top_y - (6.3 * mm),
+        f"{format_timecode(observation.video_time_ms)} 프레임",
     )
 
     video_name = _fit_text(
         _normalize_pdf_text(record.get("video_name", "영상")),
         font_name=_FONT_REGULAR,
-        font_size=7.5,
-        max_width=width - (6 * mm),
+        font_size=8,
+        max_width=content_width,
     )
     document.setFillColor(HexColor("#8b95a1"))
-    document.setFont(_FONT_REGULAR, 7.5)
-    document.drawString(x + (3 * mm), caption_bottom - (5 * mm), video_name)
-    evidence = observation.evidence or (event.summary if event is not None else "")
+    document.setFont(_FONT_REGULAR, 8)
+    document.drawString(content_x, top_y - (14 * mm), video_name)
+
+    document.setFillColor(HexColor("#4e5968"))
+    document.setFont(_FONT_SEMIBOLD, 8.5)
+    document.drawString(content_x, top_y - (22 * mm), "판단 근거")
     _draw_paragraph(
         document,
-        text=evidence or "판단 근거 없음",
-        x=x + (3 * mm),
-        top_y=caption_bottom - (8 * mm),
-        width=width - (6 * mm),
-        max_height=(caption_bottom - reason_bottom) - (10 * mm),
+        text=observation.evidence or "판단 근거 없음",
+        x=content_x,
+        top_y=top_y - (26 * mm),
+        width=content_width,
+        max_height=height - (29 * mm),
         font_size=8.5,
         leading=11.5,
     )
+
+    document.setStrokeColor(HexColor("#d1d6db"))
+    document.setLineWidth(0.45)
+    document.line(x, bottom_y, x + width, bottom_y)
 
 
 def _draw_cropped_image(
@@ -499,28 +585,18 @@ def _draw_korail_logo(
         )
 
 
-def _risk_count_text(
-    events: list[AnalysisEvent], records: list[dict[str, object]]
-) -> str:
-    if events:
-        counts = Counter(event.risk_level for event in events)
-    else:
-        counts = Counter(
-            observation.risk_level
-            for record in records
-            if isinstance((observation := record.get("observation")), JudgeObservation)
-        )
+def _risk_count_text(records: list[dict[str, object]]) -> str:
+    counts = Counter(
+        observation.risk_level
+        for record in records
+        if isinstance((observation := record.get("observation")), JudgeObservation)
+    )
     labels = [
         f"{_RISK_LABELS[risk][0]} {counts[risk]}건"
         for risk in (RiskLevel.HIGH, RiskLevel.MEDIUM, RiskLevel.LOW)
         if counts[risk]
     ]
     return ", ".join(labels) if labels else "의심 지장수목 없음"
-
-
-def _section_labels(events: list[AnalysisEvent]) -> list[str]:
-    labels = [format_section_label(event.section_start, event.section_end) for event in events]
-    return list(dict.fromkeys(label for label in labels if label not in _UNKNOWN_SECTION_LABELS))
 
 
 def _summarize_values(values: list[str], *, fallback: str = "-") -> str:
@@ -540,10 +616,110 @@ def _matching_event(
             event
             for event in events
             if event.video_id == observation.video_id
-            and event.start_time_ms <= observation.video_time_ms <= event.end_time_ms
+            and event.start_time_ms <= observation.video_time_ms < event.end_time_ms
         ),
         None,
     )
+
+
+def _matching_section(
+    sections: list[SectionMapping], observation: JudgeObservation
+) -> SectionMapping | None:
+    return next(
+        (
+            section
+            for section in sections
+            if section.video_id == observation.video_id
+            and section.start_time_ms <= observation.video_time_ms < section.end_time_ms
+        ),
+        None,
+    )
+
+
+def _unique_frame_records(
+    suspicious_records: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Keep one conservative evaluation for each video timestamp."""
+
+    selected: dict[tuple[int, int], dict[str, object]] = {}
+    for record in suspicious_records:
+        observation = record.get("observation")
+        if not isinstance(observation, JudgeObservation):
+            continue
+        key = (observation.video_id, observation.video_time_ms)
+        current = selected.get(key)
+        if current is None or _record_score(record) > _record_score(current):
+            selected[key] = record
+    return sorted(selected.values(), key=_record_sort_key)
+
+
+def _record_score(record: dict[str, object]) -> tuple[int, int, int]:
+    observation = record.get("observation")
+    if not isinstance(observation, JudgeObservation):
+        return (-1, 0, 0)
+    return (
+        observation.risk_level.priority,
+        int(bool(record.get("capture_path"))),
+        len(observation.evidence or ""),
+    )
+
+
+def _record_sort_key(record: dict[str, object]) -> tuple[int, int]:
+    observation = record.get("observation")
+    if not isinstance(observation, JudgeObservation):
+        return (0, 0)
+    return (observation.video_id, observation.video_time_ms)
+
+
+def _group_records_by_section(
+    records: list[dict[str, object]],
+    *,
+    events: list[AnalysisEvent],
+    sections: list[SectionMapping],
+) -> list[_SectionGroup]:
+    grouped: dict[tuple[int, str], _SectionGroup] = {}
+    for record in records:
+        observation = record.get("observation")
+        if not isinstance(observation, JudgeObservation):
+            continue
+        section = _matching_section(sections, observation)
+        event = _matching_event(events, observation) if section is None else None
+        if section is not None:
+            section_label = format_section_label(section.section_start, section.section_end)
+        elif event is not None:
+            section_label = format_section_label(event.section_start, event.section_end)
+        else:
+            section_label = "구간 미확인"
+        video_name = _normalize_pdf_text(record.get("video_name", "영상")).strip() or "영상"
+        key = (observation.video_id, section_label)
+        group = grouped.get(key)
+        if group is None:
+            group = _SectionGroup(
+                video_id=observation.video_id,
+                video_name=video_name,
+                section_label=section_label,
+                records=[],
+            )
+            grouped[key] = group
+        group.records.append(record)
+    return list(grouped.values())
+
+
+def _build_report_pages(groups: list[_SectionGroup]) -> list[_ReportPage]:
+    pages: list[_ReportPage] = []
+    for group in groups:
+        for index in range(0, len(group.records), 2):
+            pages.append(
+                _ReportPage(
+                    video_name=group.video_name,
+                    section_label=group.section_label,
+                    records=group.records[index : index + 2],
+                    continued=index > 0,
+                )
+            )
+    return pages or [
+        _ReportPage(video_name="", section_label="구간 미확인", records=[])
+    ]
 
 
 def _video_titles(

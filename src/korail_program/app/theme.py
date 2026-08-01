@@ -206,6 +206,16 @@ QLabel#SectionTitle {
     font-weight: 700;
 }
 
+QLabel#FrameSectionHeader {
+    background: #edf6ff;
+    color: #1b64da;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
 QLabel#PageTitle {
     font-size: 22px;
     font-weight: 700;
