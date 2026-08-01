@@ -34,6 +34,7 @@ from korail_program.analysis.batch import (
 )
 from korail_program.app.home_page import WorkflowHomePage
 from korail_program.app.model_dialog import ModelSettingsDialog
+from korail_program.app.pdf_viewer import PdfViewerDialog
 from korail_program.app.theme import APP_STYLESHEET
 from korail_program.app.video_player import VideoPlayer
 from korail_program.app.widgets import (
@@ -969,7 +970,14 @@ class MainWindow(QMainWindow):
             return
 
         self._log(f"PDF 리포트 저장: {target_path}")
-        QMessageBox.information(self, "PDF 저장 완료", str(target_path))
+        try:
+            PdfViewerDialog(target_path, parent=self).exec()
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(
+                self,
+                "PDF 미리보기 실패",
+                f"PDF는 저장되었지만 미리보기를 열 수 없습니다.\n{exc}",
+            )
 
     def _update_inspector_from_event(self, key: object) -> None:
         event = self._event_payloads.get(int(key))

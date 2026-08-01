@@ -69,7 +69,7 @@ class ReportTests(unittest.TestCase):
         importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
         "PDF verification dependencies are not installed",
     )
-    def test_pdf_report_uses_one_page_per_suspicious_frame(self) -> None:
+    def test_pdf_report_uses_template_layout_with_two_frames_per_page(self) -> None:
         from pypdf import PdfReader
 
         image_bytes = base64.b64decode(
@@ -88,7 +88,7 @@ class ReportTests(unittest.TestCase):
                 evidence=f"프레임 {index} 판단 근거",
                 needs_human_review=False,
             )
-            for index, time_ms in enumerate((12_000, 24_000), start=1)
+            for index, time_ms in enumerate((12_000, 24_000, 28_000), start=1)
         ]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -109,7 +109,7 @@ class ReportTests(unittest.TestCase):
             _, _, pdf_path = write_reports(
                 output_dir=output_dir,
                 video_count=1,
-                sampled_frame_count=2,
+                sampled_frame_count=3,
                 ocr_observation_count=0,
                 suspicious_records=records,
                 events=[
@@ -122,8 +122,8 @@ class ReportTests(unittest.TestCase):
                         risk_level=RiskLevel.HIGH,
                         summary="전차선 인접 수목",
                         needs_human_review=False,
-                        source_observation_count=2,
-                        capture_count=2,
+                        source_observation_count=3,
+                        capture_count=3,
                     )
                 ],
                 failures=[],
@@ -132,14 +132,21 @@ class ReportTests(unittest.TestCase):
 
             self.assertTrue(pdf_path.exists())
             reader = PdfReader(str(pdf_path))
-            self.assertEqual(len(reader.pages), len(records) + 1)
+            self.assertEqual(len(reader.pages), 2)
             extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
-            self.assertEqual(reader.metadata.title, "지장수목 의심 프레임 분석 리포트")
+            first_page_text = reader.pages[0].extract_text() or ""
+            self.assertEqual(reader.metadata.title, "전차선로 지장수목 분석 REPORT")
             self.assertIn("서울_대전_선로점검.mp4", extracted_text)
-            self.assertIn("영상 파일", extracted_text)
-            self.assertIn("재생 시점", extracted_text)
+            self.assertIn("분석현황", extracted_text)
+            self.assertIn("분석사진", extracted_text)
+            self.assertIn("분석일시", extracted_text)
+            self.assertIn("분석영상", extracted_text)
             self.assertIn("OCR 추정 구간", extracted_text)
             self.assertIn("서울 - 대전", extracted_text)
+            self.assertIn("프레임 1 판단 근거", first_page_text)
+            self.assertIn("프레임 2 판단 근거", first_page_text)
+            self.assertNotIn("촬영날짜", extracted_text)
+            self.assertNotIn("위치", extracted_text)
 
 
 if __name__ == "__main__":

@@ -81,7 +81,7 @@ class WorkflowHomePage(QFrame):
         self.report_button.clicked.connect(self.report_requested)
         report_step, report_number = self._build_step(
             number=3,
-            description="탐지 프레임을 페이지별로 정리한 PDF를 저장합니다.",
+            description="탐지 결과를 현장 양식에 맞춘 PDF로 저장하고 확인합니다.",
             button=self.report_button,
         )
 

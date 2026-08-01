@@ -1,7 +1,8 @@
-"""Printable PDF report with one suspicious frame per page."""
+"""A4 field report with two suspicious frames per page."""
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 from html import escape
 from importlib import resources
@@ -14,6 +15,13 @@ from korail_program.core.timecode import format_timecode
 
 _FONT_REGULAR = "PretendardGOV-PDF-Regular"
 _FONT_SEMIBOLD = "PretendardGOV-PDF-SemiBold"
+_UNKNOWN_SECTION_LABELS = {"구간 미확인", "미확인", "-", ""}
+_RISK_LABELS = {
+    RiskLevel.HIGH: ("경고", "#f04452"),
+    RiskLevel.MEDIUM: ("주의", "#ff8a3d"),
+    RiskLevel.LOW: ("관찰", "#00a878"),
+    RiskLevel.NONE: ("이상 없음", "#6b7684"),
+}
 
 
 def write_pdf_report(
@@ -26,7 +34,7 @@ def write_pdf_report(
     failures: list[dict[str, object]],
     video_titles: list[str] | None = None,
 ) -> Path:
-    """Write a cover followed by one page for every suspicious frame."""
+    """Write a template-style report with up to two capture cells per A4 page."""
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -41,44 +49,32 @@ def write_pdf_report(
     _register_fonts()
 
     document = canvas.Canvas(str(pdf_path), pagesize=A4, pageCompression=1)
-    document.setTitle("지장수목 의심 프레임 분석 리포트")
+    document.setTitle("전차선로 지장수목 분석 REPORT")
     document.setAuthor("전차선로 지장수목 분석")
     document.setCreator("Korail Analyzer")
     document.setSubject("영상 기반 전차선로 지장수목 분석 결과")
 
     normalized_titles = _video_titles(video_titles, suspicious_records)
-    _draw_cover_page(
-        document,
-        video_titles=normalized_titles,
-        video_count=video_count,
-        sampled_frame_count=sampled_frame_count,
-        suspicious_frame_count=len(suspicious_records),
-        events=events,
-        failure_count=len(failures),
-    )
-    document.showPage()
+    section_labels = _section_labels(events)
+    analysis_time = datetime.now().astimezone().strftime("%Y.%m.%d %H:%M")
+    page_records = [
+        suspicious_records[index : index + 2]
+        for index in range(0, len(suspicious_records), 2)
+    ] or [[]]
 
-    total_pages = len(suspicious_records)
-    if suspicious_records:
-        for page_number, record in enumerate(suspicious_records, start=1):
-            _draw_frame_page(
-                document,
-                record=record,
-                events=events,
-                page_number=page_number,
-                total_pages=total_pages,
-                video_count=video_count,
-                sampled_frame_count=sampled_frame_count,
-                failure_count=len(failures),
-            )
-            document.showPage()
-    else:
-        _draw_empty_page(
+    for page_number, records in enumerate(page_records, start=1):
+        _draw_report_page(
             document,
+            records=records,
+            events=events,
+            video_titles=normalized_titles,
             video_count=video_count,
             sampled_frame_count=sampled_frame_count,
-            event_count=len(events),
             failure_count=len(failures),
+            section_labels=section_labels,
+            analysis_time=analysis_time,
+            page_number=page_number,
+            total_pages=len(page_records),
         )
         document.showPage()
 
@@ -103,394 +99,341 @@ def _register_fonts() -> None:
             pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
 
 
-def _draw_cover_page(
+def _draw_report_page(
     document,
     *,
+    records: list[dict[str, object]],
+    events: list[AnalysisEvent],
     video_titles: list[str],
     video_count: int,
     sampled_frame_count: int,
-    suspicious_frame_count: int,
-    events: list[AnalysisEvent],
     failure_count: int,
+    section_labels: list[str],
+    analysis_time: str,
+    page_number: int,
+    total_pages: int,
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
 
     page_width, page_height = A4
-    margin = 20 * mm
+    margin = 18 * mm
     content_width = page_width - (margin * 2)
 
-    document.setFillColor(HexColor("#3182f6"))
-    document.roundRect(margin, page_height - (28 * mm), 18 * mm, 3 * mm, 1.5 * mm, fill=1, stroke=0)
-
-    document.setFillColor(HexColor("#191f28"))
-    document.setFont(_FONT_SEMIBOLD, 26)
-    document.drawString(margin, page_height - (50 * mm), "전차선로 지장수목")
-    document.drawString(margin, page_height - (62 * mm), "분석 리포트")
-
-    document.setFillColor(HexColor("#6b7684"))
-    document.setFont(_FONT_REGULAR, 11)
-    document.drawString(
+    title_y = page_height - (33 * mm)
+    title_height = 14 * mm
+    document.setFillColor(HexColor("#ecffff"))
+    document.rect(margin, title_y, content_width, title_height, fill=1, stroke=0)
+    document.setStrokeColor(HexColor("#4e7cff"))
+    document.setLineWidth(1.4)
+    document.line(margin, title_y, page_width - margin, title_y)
+    document.line(
         margin,
-        page_height - (74 * mm),
-        "영상 프레임 분석 결과와 OCR 기반 추정 구간을 정리한 보고서입니다.",
+        title_y + title_height,
+        page_width - margin,
+        title_y + title_height,
     )
-    generated_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
-    document.setFont(_FONT_REGULAR, 9)
-    document.drawString(margin, page_height - (83 * mm), f"생성 일시  {generated_at}")
+    document.setFillColor(HexColor("#111111"))
+    document.setFont(_FONT_SEMIBOLD, 22)
+    document.drawCentredString(
+        page_width / 2,
+        title_y + (4.1 * mm),
+        "전차선로 지장수목 분석 REPORT",
+    )
 
-    metrics = (
-        ("분석 영상", f"{video_count}개"),
-        ("샘플 프레임", f"{sampled_frame_count}개"),
-        ("의심 프레임", f"{suspicious_frame_count}개"),
-        ("탐지 이벤트", f"{len(events)}건"),
+    document.setFont(_FONT_REGULAR, 8)
+    document.setFillColor(HexColor("#8b95a1"))
+    document.drawRightString(
+        page_width - margin,
+        title_y - (7 * mm),
+        f"{page_number} / {total_pages}",
     )
-    metric_gap = 4 * mm
-    metric_width = (content_width - metric_gap) / 2
-    for index, (label, value) in enumerate(metrics):
-        row, column = divmod(index, 2)
-        _draw_metric_tile(
+
+    _draw_section_heading(document, x=margin, y=page_height - (66 * mm), text="분석현황")
+    summary_rows = _summary_rows(
+        analysis_time=analysis_time,
+        video_titles=video_titles,
+        video_count=video_count,
+        section_labels=section_labels,
+        events=events,
+        records=records,
+    )
+    summary_y = page_height - (78 * mm)
+    for index, (label, value) in enumerate(summary_rows):
+        _draw_summary_row(
             document,
-            x=margin + (column * (metric_width + metric_gap)),
-            y=page_height - ((112 + (row * 27)) * mm),
-            width=metric_width,
+            x=margin + (4 * mm),
+            y=summary_y - (index * 10 * mm),
             label=label,
             value=value,
+            max_width=content_width - (8 * mm),
         )
 
-    document.setFillColor(HexColor("#333d4b"))
-    document.setFont(_FONT_SEMIBOLD, 11)
-    document.drawString(margin, 142 * mm, "분석 영상")
-    _draw_cover_list(
+    _draw_section_heading(document, x=margin, y=page_height - (119 * mm), text="분석사진")
+    _draw_capture_table(
         document,
-        values=video_titles or ["영상 정보 없음"],
         x=margin,
-        top_y=134 * mm,
+        top_y=page_height - (127 * mm),
         width=content_width,
-        max_items=4,
+        height=82 * mm,
+        records=records,
+        events=events,
     )
 
-    section_labels = list(
-        dict.fromkeys(
-            format_section_label(event.section_start, event.section_end) for event in events
-        )
-    )
-    document.setFillColor(HexColor("#333d4b"))
-    document.setFont(_FONT_SEMIBOLD, 11)
-    document.drawString(margin, 84 * mm, "OCR 추정 구간")
-    _draw_cover_list(
-        document,
-        values=section_labels or ["구간 미확인"],
-        x=margin,
-        top_y=76 * mm,
-        width=content_width,
-        max_items=3,
-    )
-
+    _draw_korail_logo(document, x=margin, y=17 * mm, max_width=42 * mm, max_height=8 * mm)
+    footer_parts = [f"샘플 프레임 {sampled_frame_count}개"]
+    if failure_count:
+        footer_parts.append(f"처리 실패 {failure_count}건")
     document.setFillColor(HexColor("#8b95a1"))
-    document.setFont(_FONT_REGULAR, 8)
-    document.drawString(
-        margin,
-        17 * mm,
-        f"처리 실패 {failure_count}건  ·  구간 정보는 영상 OCR 관측을 기반으로 한 추정값입니다.",
+    document.setFont(_FONT_REGULAR, 7.5)
+    document.drawRightString(
+        page_width - margin,
+        18 * mm,
+        " · ".join(footer_parts),
     )
 
 
-def _draw_metric_tile(
+def _draw_section_heading(document, *, x: float, y: float, text: str) -> None:
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.units import mm
+
+    document.setStrokeColor(HexColor("#333333"))
+    document.setLineWidth(0.8)
+    document.rect(x, y - (3.8 * mm), 4.8 * mm, 4.8 * mm, fill=0, stroke=1)
+    document.setFillColor(HexColor("#111111"))
+    document.setFont(_FONT_SEMIBOLD, 16)
+    document.drawString(x + (8 * mm), y - (3.1 * mm), text)
+
+
+def _summary_rows(
+    *,
+    analysis_time: str,
+    video_titles: list[str],
+    video_count: int,
+    section_labels: list[str],
+    events: list[AnalysisEvent],
+    records: list[dict[str, object]],
+) -> list[tuple[str, str]]:
+    video_summary = _summarize_values(video_titles, fallback=f"분석 영상 {video_count}개")
+    rows = [
+        ("분석일시", analysis_time),
+        ("분석영상", video_summary),
+    ]
+    if section_labels:
+        rows.append(("OCR 추정 구간", _summarize_values(section_labels)))
+    rows.append(("탐지결과", _risk_count_text(events, records)))
+    return rows
+
+
+def _draw_summary_row(
     document,
     *,
     x: float,
     y: float,
-    width: float,
     label: str,
     value: str,
+    max_width: float,
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.units import mm
 
-    document.setFillColor(HexColor("#f2f4f6"))
-    document.roundRect(x, y, width, 22 * mm, 7, fill=1, stroke=0)
-    document.setFillColor(HexColor("#6b7684"))
-    document.setFont(_FONT_REGULAR, 9)
-    document.drawString(x + (5 * mm), y + (14 * mm), label)
-    document.setFillColor(HexColor("#191f28"))
-    document.setFont(_FONT_SEMIBOLD, 16)
-    document.drawString(x + (5 * mm), y + (5 * mm), value)
+    document.setFillColor(HexColor("#333333"))
+    document.setFont(_FONT_REGULAR, 11)
+    document.drawString(x, y, "○")
+    document.setFont(_FONT_SEMIBOLD, 10.5)
+    document.drawString(x + (8 * mm), y, f"{label} :")
+    value_x = x + (39 * mm)
+    document.setFont(_FONT_REGULAR, 10.5)
+    document.drawString(
+        value_x,
+        y,
+        _fit_text(
+            value,
+            font_name=_FONT_REGULAR,
+            font_size=10.5,
+            max_width=max_width - (39 * mm),
+        ),
+    )
 
 
-def _draw_cover_list(
+def _draw_capture_table(
     document,
     *,
-    values: list[str],
     x: float,
     top_y: float,
     width: float,
-    max_items: int,
+    height: float,
+    records: list[dict[str, object]],
+    events: list[AnalysisEvent],
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.units import mm
 
-    visible = values[:max_items]
-    if len(values) > max_items:
-        visible.append(f"외 {len(values) - max_items}개")
-    for index, value in enumerate(visible):
-        y = top_y - (index * 9 * mm)
-        document.setFillColor(HexColor("#3182f6"))
-        document.circle(x + (1.5 * mm), y + (1.3 * mm), 1.2 * mm, fill=1, stroke=0)
-        document.setFillColor(HexColor("#4e5968"))
-        document.setFont(_FONT_REGULAR, 10)
-        document.drawString(
-            x + (6 * mm),
-            y,
-            _fit_text(
-                _normalize_pdf_text(value),
-                font_name=_FONT_REGULAR,
-                font_size=10,
-                max_width=width - (6 * mm),
-            ),
+    bottom_y = top_y - height
+    column_width = width / 2
+    reason_height = 20 * mm
+    caption_height = 9 * mm
+    caption_bottom = bottom_y + reason_height
+    image_bottom = caption_bottom + caption_height
+
+    document.setStrokeColor(HexColor("#333333"))
+    document.setLineWidth(0.55)
+    document.rect(x, bottom_y, width, height, fill=0, stroke=1)
+    document.line(x + column_width, bottom_y, x + column_width, top_y)
+    document.line(x, caption_bottom, x + width, caption_bottom)
+    document.line(x, image_bottom, x + width, image_bottom)
+
+    for column in range(2):
+        cell_x = x + (column * column_width)
+        record = records[column] if column < len(records) else None
+        _draw_capture_cell(
+            document,
+            x=cell_x,
+            image_bottom=image_bottom,
+            image_top=top_y,
+            width=column_width,
+            caption_bottom=caption_bottom,
+            reason_bottom=bottom_y,
+            record=record,
+            events=events,
         )
 
 
-def _draw_frame_page(
+def _draw_capture_cell(
     document,
     *,
-    record: dict[str, object],
+    x: float,
+    image_bottom: float,
+    image_top: float,
+    width: float,
+    caption_bottom: float,
+    reason_bottom: float,
+    record: dict[str, object] | None,
     events: list[AnalysisEvent],
-    page_number: int,
-    total_pages: int,
-    video_count: int,
-    sampled_frame_count: int,
-    failure_count: int,
 ) -> None:
     from reportlab.lib.colors import HexColor
-    from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
-    from reportlab.lib.utils import ImageReader
 
-    page_width, page_height = A4
-    margin = 15 * mm
-    content_width = page_width - (margin * 2)
+    image_height = image_top - image_bottom
+    if record is None:
+        document.setFillColor(HexColor("#f7f8fa"))
+        document.rect(x, image_bottom, width, image_height, fill=1, stroke=0)
+        document.setFillColor(HexColor("#b0b8c1"))
+        document.setFont(_FONT_REGULAR, 9)
+        document.drawCentredString(
+            x + (width / 2),
+            image_bottom + (image_height / 2),
+            "탐지 프레임 없음",
+        )
+        return
 
     observation = record.get("observation")
     if not isinstance(observation, JudgeObservation):
         raise TypeError("PDF frame record requires a JudgeObservation")
     event = _matching_event(events, observation)
-    video_name = _fit_text(
-        _normalize_pdf_text(record.get("video_name", "영상")),
-        font_name=_FONT_SEMIBOLD,
-        font_size=11,
-        max_width=100 * mm,
-    )
-
-    document.setFillColor(HexColor("#191f28"))
-    document.setFont(_FONT_SEMIBOLD, 18)
-    document.drawString(margin, page_height - (18 * mm), "지장수목 의심 프레임")
-
-    page_text = f"{page_number} / {total_pages}"
-    document.setFont(_FONT_REGULAR, 9)
-    document.setFillColor(HexColor("#8b95a1"))
-    document.drawRightString(page_width - margin, page_height - (17.5 * mm), page_text)
-
-    meta_y = page_height - (25 * mm)
-    _draw_label_value(
-        document,
-        x=margin,
-        y=meta_y,
-        label="영상 파일",
-        value=video_name,
-        max_width=100 * mm,
-    )
-    time_text = format_timecode(observation.video_time_ms)
-    _draw_label_value(
-        document,
-        x=margin + (112 * mm),
-        y=meta_y,
-        label="재생 시점",
-        value=time_text,
-    )
-    document.setFont(_FONT_REGULAR, 9)
-    document.setFillColor(HexColor("#8b95a1"))
-    document.drawRightString(page_width - margin, meta_y, "위험도")
-    _draw_risk_chip(
-        document,
-        risk_level=observation.risk_level,
-        right_x=page_width - margin,
-        center_y=meta_y - (5 * mm),
-    )
-
-    image_x = margin
-    image_y = 138 * mm
-    image_width = content_width
-    image_height = 112 * mm
-    document.setFillColor(HexColor("#f2f4f6"))
-    document.roundRect(image_x, image_y, image_width, image_height, 8, fill=1, stroke=0)
-
     capture_path = Path(str(record.get("capture_path") or record.get("frame_path") or ""))
-    try:
-        image = ImageReader(str(capture_path))
-        source_width, source_height = image.getSize()
-        scale = min(image_width / source_width, image_height / source_height)
-        draw_width = source_width * scale
-        draw_height = source_height * scale
-        document.drawImage(
-            image,
-            image_x + ((image_width - draw_width) / 2),
-            image_y + ((image_height - draw_height) / 2),
-            width=draw_width,
-            height=draw_height,
-            preserveAspectRatio=True,
-            mask="auto",
-        )
-    except Exception:  # noqa: BLE001
-        document.setFont(_FONT_REGULAR, 10)
-        document.setFillColor(HexColor("#8b95a1"))
-        document.drawCentredString(
-            page_width / 2,
-            image_y + (image_height / 2),
-            "캡처 이미지를 불러올 수 없습니다.",
-        )
+    _draw_cropped_image(
+        document,
+        capture_path=capture_path,
+        x=x + (0.5 * mm),
+        y=image_bottom + (0.5 * mm),
+        width=width - (1 * mm),
+        height=image_height - (1 * mm),
+    )
 
+    risk_label, risk_color = _RISK_LABELS[observation.risk_level]
     section = (
         format_section_label(event.section_start, event.section_end)
         if event is not None
-        else "구간 미확인"
+        else ""
     )
-    review_status = event.review_status.value if event is not None else "미확인"
-    detail_y = 124 * mm
-    _draw_label_value(
-        document,
-        x=margin,
-        y=detail_y,
-        label="OCR 추정 구간",
-        value=section,
-        max_width=118 * mm,
-    )
-    _draw_label_value(
-        document,
-        x=page_width - margin - (48 * mm),
-        y=detail_y,
-        label="검수 상태",
-        value=review_status,
+    if section in _UNKNOWN_SECTION_LABELS:
+        section = ""
+    caption_parts = [risk_label]
+    if section:
+        caption_parts.append(section)
+    caption_parts.append(format_timecode(observation.video_time_ms))
+    caption = " · ".join(caption_parts)
+    document.setFillColor(HexColor(risk_color))
+    document.setFont(_FONT_SEMIBOLD, 10.5)
+    document.drawCentredString(
+        x + (width / 2),
+        caption_bottom + (3 * mm),
+        _fit_text(
+            caption,
+            font_name=_FONT_SEMIBOLD,
+            font_size=10.5,
+            max_width=width - (5 * mm),
+        ),
     )
 
-    document.setFont(_FONT_SEMIBOLD, 10)
-    document.setFillColor(HexColor("#333d4b"))
-    document.drawString(margin, 108 * mm, "판단 근거")
+    video_name = _fit_text(
+        _normalize_pdf_text(record.get("video_name", "영상")),
+        font_name=_FONT_REGULAR,
+        font_size=7.5,
+        max_width=width - (6 * mm),
+    )
+    document.setFillColor(HexColor("#8b95a1"))
+    document.setFont(_FONT_REGULAR, 7.5)
+    document.drawString(x + (3 * mm), caption_bottom - (5 * mm), video_name)
+    evidence = observation.evidence or (event.summary if event is not None else "")
     _draw_paragraph(
         document,
-        text=observation.evidence or "판단 근거 없음",
-        x=margin,
-        top_y=101 * mm,
-        width=content_width,
-        max_height=54 * mm,
+        text=evidence or "판단 근거 없음",
+        x=x + (3 * mm),
+        top_y=caption_bottom - (8 * mm),
+        width=width - (6 * mm),
+        max_height=(caption_bottom - reason_bottom) - (10 * mm),
+        font_size=8.5,
+        leading=11.5,
     )
 
-    footer_text = (
-        f"분석 영상 {video_count}개  ·  샘플 프레임 {sampled_frame_count}개"
-        f"  ·  의심 프레임 {total_pages}개  ·  처리 실패 {failure_count}건"
-    )
-    document.setFont(_FONT_REGULAR, 8)
-    document.setFillColor(HexColor("#8b95a1"))
-    document.drawString(margin, 14 * mm, footer_text)
 
-
-def _draw_empty_page(
+def _draw_cropped_image(
     document,
     *,
-    video_count: int,
-    sampled_frame_count: int,
-    event_count: int,
-    failure_count: int,
-) -> None:
-    from reportlab.lib.colors import HexColor
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-
-    page_width, page_height = A4
-    margin = 20 * mm
-    document.setFillColor(HexColor("#191f28"))
-    document.setFont(_FONT_SEMIBOLD, 20)
-    document.drawString(margin, page_height - (24 * mm), "지장수목 분석 리포트")
-
-    document.setFillColor(HexColor("#f2f4f6"))
-    document.roundRect(
-        margin,
-        page_height - (108 * mm),
-        page_width - (margin * 2),
-        58 * mm,
-        10,
-        fill=1,
-        stroke=0,
-    )
-    document.setFillColor(HexColor("#333d4b"))
-    document.setFont(_FONT_SEMIBOLD, 14)
-    document.drawCentredString(
-        page_width / 2,
-        page_height - (76 * mm),
-        "의심 프레임이 없습니다.",
-    )
-    summary = (
-        f"분석 영상 {video_count}개  ·  샘플 프레임 {sampled_frame_count}개  ·  "
-        f"이벤트 {event_count}건  ·  처리 실패 {failure_count}건"
-    )
-    document.setFont(_FONT_REGULAR, 10)
-    document.setFillColor(HexColor("#6b7684"))
-    document.drawCentredString(page_width / 2, page_height - (88 * mm), summary)
-
-
-def _draw_risk_chip(document, *, risk_level: RiskLevel, right_x: float, center_y: float) -> None:
-    from reportlab.lib.colors import HexColor
-    from reportlab.lib.units import mm
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-
-    background, foreground = {
-        RiskLevel.HIGH: ("#feecef", "#d33b4c"),
-        RiskLevel.MEDIUM: ("#fff4e5", "#b25d00"),
-        RiskLevel.LOW: ("#e8f8f2", "#008f6a"),
-        RiskLevel.NONE: ("#f2f4f6", "#6b7684"),
-    }[risk_level]
-    text = risk_level.value
-    chip_width = stringWidth(text, _FONT_SEMIBOLD, 9) + (7 * mm)
-    chip_height = 7 * mm
-    chip_x = right_x - chip_width
-    chip_y = center_y - (chip_height / 2)
-    document.setFillColor(HexColor(background))
-    document.roundRect(chip_x, chip_y, chip_width, chip_height, chip_height / 2, fill=1, stroke=0)
-    document.setFillColor(HexColor(foreground))
-    document.setFont(_FONT_SEMIBOLD, 9)
-    document.drawCentredString(chip_x + (chip_width / 2), chip_y + (2.2 * mm), text)
-
-
-def _draw_label_value(
-    document,
-    *,
+    capture_path: Path,
     x: float,
     y: float,
-    label: str,
-    value: str,
-    max_width: float | None = None,
+    width: float,
+    height: float,
 ) -> None:
     from reportlab.lib.colors import HexColor
-    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
 
-    document.setFont(_FONT_REGULAR, 9)
-    document.setFillColor(HexColor("#8b95a1"))
-    document.drawString(x, y, label)
-    document.setFont(_FONT_SEMIBOLD, 10)
-    document.setFillColor(HexColor("#333d4b"))
-    normalized_value = _normalize_pdf_text(value)
-    fitted_value = (
-        _fit_text(
-            normalized_value,
-            font_name=_FONT_SEMIBOLD,
-            font_size=10,
-            max_width=max_width,
+    document.setFillColor(HexColor("#f2f4f6"))
+    document.rect(x, y, width, height, fill=1, stroke=0)
+    try:
+        image = ImageReader(str(capture_path))
+        source_width, source_height = image.getSize()
+        scale = max(width / source_width, height / source_height)
+        draw_width = source_width * scale
+        draw_height = source_height * scale
+        document.saveState()
+        try:
+            clip = document.beginPath()
+            clip.rect(x, y, width, height)
+            document.clipPath(clip, stroke=0, fill=0)
+            document.drawImage(
+                image,
+                x + ((width - draw_width) / 2),
+                y + ((height - draw_height) / 2),
+                width=draw_width,
+                height=draw_height,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+        finally:
+            document.restoreState()
+    except Exception:  # noqa: BLE001
+        document.setFillColor(HexColor("#8b95a1"))
+        document.setFont(_FONT_REGULAR, 8.5)
+        document.drawCentredString(
+            x + (width / 2),
+            y + (height / 2),
+            "캡처 이미지를 불러올 수 없습니다.",
         )
-        if max_width is not None
-        else normalized_value
-    )
-    document.drawString(x, y - (6 * mm), fitted_value)
 
 
 def _draw_paragraph(
@@ -501,29 +444,92 @@ def _draw_paragraph(
     top_y: float,
     width: float,
     max_height: float,
+    font_size: float,
+    leading: float,
 ) -> None:
     from reportlab.lib.colors import HexColor
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph
 
     normalized_text = _normalize_pdf_text(text).strip()
-    if len(normalized_text) > 420:
-        normalized_text = normalized_text[:419].rstrip() + "…"
+    if len(normalized_text) > 190:
+        normalized_text = normalized_text[:189].rstrip() + "…"
     normalized_text = "<br/>".join(escape(line) for line in normalized_text.splitlines())
     paragraph = Paragraph(
         normalized_text,
         ParagraphStyle(
-            "FrameEvidence",
+            "CaptureEvidence",
             fontName=_FONT_REGULAR,
-            fontSize=10,
-            leading=16,
-            textColor=HexColor("#4e5968"),
+            fontSize=font_size,
+            leading=leading,
+            textColor=HexColor("#333d4b"),
             splitLongWords=True,
             spaceAfter=0,
         ),
     )
     _, paragraph_height = paragraph.wrap(width, max_height)
     paragraph.drawOn(document, x, top_y - min(paragraph_height, max_height))
+
+
+def _draw_korail_logo(
+    document,
+    *,
+    x: float,
+    y: float,
+    max_width: float,
+    max_height: float,
+) -> None:
+    from reportlab.lib.utils import ImageReader
+
+    logo_resource = resources.files("korail_program.assets.branding").joinpath(
+        "korail-logo.png"
+    )
+    with resources.as_file(logo_resource) as logo_path:
+        image = ImageReader(str(logo_path))
+        source_width, source_height = image.getSize()
+        scale = min(max_width / source_width, max_height / source_height)
+        document.drawImage(
+            image,
+            x,
+            y,
+            width=source_width * scale,
+            height=source_height * scale,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+
+
+def _risk_count_text(
+    events: list[AnalysisEvent], records: list[dict[str, object]]
+) -> str:
+    if events:
+        counts = Counter(event.risk_level for event in events)
+    else:
+        counts = Counter(
+            observation.risk_level
+            for record in records
+            if isinstance((observation := record.get("observation")), JudgeObservation)
+        )
+    labels = [
+        f"{_RISK_LABELS[risk][0]} {counts[risk]}건"
+        for risk in (RiskLevel.HIGH, RiskLevel.MEDIUM, RiskLevel.LOW)
+        if counts[risk]
+    ]
+    return ", ".join(labels) if labels else "의심 지장수목 없음"
+
+
+def _section_labels(events: list[AnalysisEvent]) -> list[str]:
+    labels = [format_section_label(event.section_start, event.section_end) for event in events]
+    return list(dict.fromkeys(label for label in labels if label not in _UNKNOWN_SECTION_LABELS))
+
+
+def _summarize_values(values: list[str], *, fallback: str = "-") -> str:
+    normalized = [value for value in values if value]
+    if not normalized:
+        return fallback
+    if len(normalized) <= 2:
+        return ", ".join(normalized)
+    return f"{normalized[0]}, {normalized[1]} 외 {len(normalized) - 2}개"
 
 
 def _matching_event(

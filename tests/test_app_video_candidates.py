@@ -12,10 +12,67 @@ from PySide6.QtCore import QMimeData, QUrl
 from PySide6.QtWidgets import QApplication, QLabel
 
 from korail_program.app.main_window import MainWindow, _build_frame_entries
+from korail_program.app.pdf_viewer import PdfViewerDialog
 from korail_program.core.video_files import collect_video_candidates
 
 
 class AppVideoCandidateTests(unittest.TestCase):
+    def test_pdf_viewer_loads_multi_page_report(self) -> None:
+        from reportlab.pdfgen import canvas
+        from shiboken6 import delete
+
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pdf_path = Path(tmp_dir) / "preview.pdf"
+            document = canvas.Canvas(str(pdf_path))
+            document.drawString(72, 720, "page 1")
+            document.showPage()
+            document.drawString(72, 720, "page 2")
+            document.showPage()
+            document.save()
+
+            viewer = PdfViewerDialog(pdf_path)
+            try:
+                self.assertEqual(viewer.document.pageCount(), 2)
+                self.assertEqual(viewer.page_count_label.text(), "2페이지")
+            finally:
+                viewer.reject()
+                delete(viewer)
+                app.processEvents()
+
+    def test_saved_pdf_opens_in_app_viewer(self) -> None:
+        app = QApplication.instance() or QApplication([])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source = root / "source.pdf"
+            target = root / "saved-report.pdf"
+            source.write_bytes(b"test-pdf")
+            window = MainWindow()
+            window._last_result = mock.Mock(report_pdf=source)
+            try:
+                with (
+                    mock.patch.object(
+                        window,
+                        "_log",
+                    ),
+                    mock.patch(
+                        "korail_program.app.main_window.QFileDialog.getSaveFileName",
+                        return_value=(str(target), "PDF Files (*.pdf)"),
+                    ),
+                    mock.patch(
+                        "korail_program.app.main_window.PdfViewerDialog"
+                    ) as viewer_type,
+                ):
+                    window.save_pdf_report()
+
+                self.assertEqual(target.read_bytes(), b"test-pdf")
+                viewer_type.assert_called_once_with(target, parent=window)
+                viewer_type.return_value.exec.assert_called_once_with()
+            finally:
+                window.close()
+                app.processEvents()
+
     def test_window_accepts_video_drop_from_any_page(self) -> None:
         app = QApplication.instance() or QApplication([])
 

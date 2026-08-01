@@ -174,6 +174,12 @@ QDialog {
     background: #f9fafb;
 }
 
+QPdfView#PdfViewer {
+    background: #e5e8eb;
+    border: 1px solid #d1d6db;
+    border-radius: 10px;
+}
+
 QFrame#SelectableCard {
     background: transparent;
     border: none;
