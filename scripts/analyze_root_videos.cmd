@@ -10,7 +10,7 @@ if not exist "%ANALYZER%" (
   exit /b 1
 )
 
-if "%KORAIL_VISION_MODEL%"=="" set "KORAIL_VISION_MODEL=gpt-5.6-terra"
+if "%KORAIL_VISION_MODEL%"=="" set "KORAIL_VISION_MODEL=qwen3-vl:4b"
 if "%KORAIL_INTERVAL_SEC%"=="" set "KORAIL_INTERVAL_SEC=15"
 if "%KORAIL_MIN_REPORT_RISK%"=="" set "KORAIL_MIN_REPORT_RISK=low"
 

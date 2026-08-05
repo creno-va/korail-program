@@ -1,29 +1,17 @@
 # 참고 자료
 
-## OpenAI API
+## Ollama
 
-- OpenAI Responses API: https://platform.openai.com/docs/api-reference/responses
-- OpenAI image input guide: https://platform.openai.com/docs/guides/images
-- OpenAI Python SDK: https://github.com/openai/openai-python
+- API 소개: https://docs.ollama.com/api/introduction
+- Chat 이미지·구조화 출력: https://docs.ollama.com/api/chat
+- 모델 다운로드: https://docs.ollama.com/api/pull
+- 설치 모델 조회: https://docs.ollama.com/api/tags
+- Vision: https://docs.ollama.com/capabilities/vision
+- Gemma 4: https://ollama.com/library/gemma4
+- Qwen3-VL: https://ollama.com/library/qwen3-vl
 
-## Python 패키징
+## 패키징·GUI
 
-- PyInstaller manual: https://pyinstaller.org/en/stable/
-- PyInstaller spec files and macOS BUNDLE: https://pyinstaller.org/en/latest/spec-files.html
-- Apple macOS package distribution: https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution
-- GitHub-hosted macOS runner labels: https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job
-
-## GUI
-
-- Qt for Python LGPL: https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html
-- KRDS Korea Design System: https://www.krds.go.kr/
-- QtAwesome Material Design Icons support: https://pypi.org/project/QtAwesome/
-
-## Typography
-
-- Pretendard: https://github.com/orioncactus/pretendard
-- Pretendard GOV release: https://github.com/orioncactus/pretendard/releases/tag/v1.3.9
-
-## OCR
-
-- PaddleOCR installation: https://www.paddleocr.ai/main/en/version3.x/installation.html
+- PyInstaller: https://pyinstaller.org/
+- Qt for Python: https://doc.qt.io/qtforpython-6/
+- FFmpeg: https://ffmpeg.org/

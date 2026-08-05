@@ -16,8 +16,7 @@ from korail_program.config import (
     DEFAULT_ANALYSIS_INTERVAL_SEC,
     DEFAULT_MAX_FRAME_WIDTH,
     DEFAULT_OCR_INTERVAL_SEC,
-    DEFAULT_OPENAI_API_KEY_ENV,
-    DEFAULT_OPENAI_BASE_URL,
+    DEFAULT_OLLAMA_URL,
     DEFAULT_VISION_MODEL,
 )
 from korail_program.core.event_merger import merge_judge_observations
@@ -34,10 +33,10 @@ from korail_program.core.models import (
 from korail_program.core.timecode import format_timecode
 from korail_program.core.video_files import discover_video_files
 from korail_program.core.video_probe import probe_video
-from korail_program.judge.openai_client import (
-    OpenAIApiError,
-    OpenAIVisionConfig,
-    OpenAIVisionJudgeClient,
+from korail_program.judge.ollama_client import (
+    OllamaApiError,
+    OllamaVisionConfig,
+    OllamaVisionJudgeClient,
 )
 from korail_program.judge.schema import judge_observation_from_text
 from korail_program.ocr.paddle_ocr_engine import PaddleOcrEngine
@@ -54,9 +53,7 @@ class BatchAnalysisConfig:
     output_dir: Path
     interval_s: float = DEFAULT_ANALYSIS_INTERVAL_SEC
     model: str = DEFAULT_VISION_MODEL
-    openai_base_url: str = DEFAULT_OPENAI_BASE_URL
-    openai_api_key: str | None = None
-    openai_api_key_env: str = DEFAULT_OPENAI_API_KEY_ENV
+    ollama_url: str = DEFAULT_OLLAMA_URL
     route_hint: str | None = None
     ffmpeg_path: str | Path = "ffmpeg"
     ffprobe_path: str | Path = "ffprobe"
@@ -129,13 +126,8 @@ def run_batch_analysis(config: BatchAnalysisConfig) -> BatchAnalysisResult:
     frames_root.mkdir(parents=True, exist_ok=True)
     captures_root.mkdir(parents=True, exist_ok=True)
 
-    client = OpenAIVisionJudgeClient(
-        OpenAIVisionConfig(
-            base_url=config.openai_base_url,
-            model=config.model,
-            api_key=config.openai_api_key,
-            api_key_env=config.openai_api_key_env,
-        )
+    client = OllamaVisionJudgeClient(
+        OllamaVisionConfig(base_url=config.ollama_url, model=config.model)
     )
     ocr_engine = _create_ocr_engine(config)
     station_matcher = _create_station_matcher(config)
@@ -538,26 +530,22 @@ def _frame_progress_message(video_path: Path, frame_index: int, frame_count: int
 
 
 def _is_model_failure(exc: Exception) -> bool:
-    return isinstance(exc, OpenAIApiError)
+    return isinstance(exc, OllamaApiError)
 
 
 def _model_failure_summary(error_text: str) -> str:
-    return _gpt_api_failure_summary(error_text)
-
-
-def _gpt_api_failure_summary(error_text: str) -> str:
     if not error_text:
-        return "GPT API 호출이 반복 실패했습니다. API key, 네트워크, 모델 접근 권한을 확인하세요."
+        return "로컬 모델 호출이 반복 실패했습니다. Ollama 실행 상태와 PC 메모리를 확인하세요."
     lowered = error_text.lower()
-    if "api key" in lowered or "unauthorized" in lowered or "401" in lowered:
-        return f"OpenAI API key가 없거나 유효하지 않아 분석을 중단했습니다: {error_text}"
-    if "rate limit" in lowered or "429" in lowered or "quota" in lowered:
-        return f"OpenAI API 사용량 제한 또는 결제 한도로 분석을 중단했습니다: {error_text}"
-    if "model" in lowered and ("not found" in lowered or "access" in lowered):
-        return f"선택한 GPT 모델에 접근할 수 없어 분석을 중단했습니다: {error_text}"
-    if "image" in lowered or "vision" in lowered:
-        return f"선택한 GPT 모델이 이미지 입력을 처리하지 못했습니다: {error_text}"
-    return f"GPT API 호출이 반복 실패해 분석을 중단했습니다: {error_text}"
+    if "memory" in lowered or "ram" in lowered or "vram" in lowered:
+        return f"모델 실행에 필요한 메모리가 부족합니다. 더 작은 모델을 선택하세요: {error_text}"
+    if "not found" in lowered or "model not installed" in lowered:
+        return f"선택한 로컬 모델이 설치되지 않았습니다: {error_text}"
+    if "does not support images" in lowered or "vision" in lowered:
+        return f"선택한 모델이 이미지 입력을 지원하지 않습니다: {error_text}"
+    if "connection" in lowered or "refused" in lowered:
+        return f"앱의 로컬 Ollama 서버에 연결할 수 없습니다: {error_text}"
+    return f"로컬 모델 호출이 반복 실패해 분석을 중단했습니다: {error_text}"
 
 
 def _create_ocr_engine(config: BatchAnalysisConfig) -> object | None:
@@ -566,12 +554,7 @@ def _create_ocr_engine(config: BatchAnalysisConfig) -> object | None:
         return None
     if backend == "vlm":
         return VlmStationOcrEngine(
-            OpenAIVisionConfig(
-                base_url=config.openai_base_url,
-                model=config.model,
-                api_key=config.openai_api_key,
-                api_key_env=config.openai_api_key_env,
-            )
+            OllamaVisionConfig(base_url=config.ollama_url, model=config.model)
         )
     if backend == "paddle":
         return PaddleOcrEngine()
@@ -580,12 +563,7 @@ def _create_ocr_engine(config: BatchAnalysisConfig) -> object | None:
             return PaddleOcrEngine()
         except RuntimeError:
             return VlmStationOcrEngine(
-                OpenAIVisionConfig(
-                    base_url=config.openai_base_url,
-                    model=config.model,
-                    api_key=config.openai_api_key,
-                    api_key_env=config.openai_api_key_env,
-                )
+                OllamaVisionConfig(base_url=config.ollama_url, model=config.model)
             )
     raise ValueError(f"Unsupported OCR backend: {config.ocr_backend!r}")
 
@@ -836,8 +814,7 @@ def _config_payload(config: BatchAnalysisConfig) -> dict[str, object]:
         "inputs": [str(path) for path in config.inputs],
         "interval_s": config.interval_s,
         "model": config.model,
-        "openai_base_url": config.openai_base_url,
-        "openai_api_key_env": config.openai_api_key_env,
+        "ollama_url": config.ollama_url,
         "route_hint": config.route_hint,
         "ffmpeg_path": str(config.ffmpeg_path),
         "ffprobe_path": str(config.ffprobe_path),

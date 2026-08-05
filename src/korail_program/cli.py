@@ -13,8 +13,7 @@ from korail_program.config import (
     DEFAULT_ANALYSIS_INTERVAL_SEC,
     DEFAULT_MAX_FRAME_WIDTH,
     DEFAULT_OCR_INTERVAL_SEC,
-    DEFAULT_OPENAI_API_KEY_ENV,
-    DEFAULT_OPENAI_BASE_URL,
+    DEFAULT_OLLAMA_URL,
     DEFAULT_VISION_MODEL,
 )
 from korail_program.core.event_merger import merge_judge_observations
@@ -42,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = subparsers.add_parser(
         "analyze-videos",
-        help="Sample videos, judge frames with GPT vision, and write a report.",
+        help="Sample videos, judge frames with a local Ollama vision model, and write a report.",
     )
     analyze.add_argument(
         "inputs",
@@ -56,13 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--model", default=os.environ.get("KORAIL_VISION_MODEL", DEFAULT_VISION_MODEL)
     )
     analyze.add_argument(
-        "--openai-base-url",
-        default=os.environ.get("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
-    )
-    analyze.add_argument(
-        "--openai-api-key-env",
-        default=os.environ.get("KORAIL_OPENAI_API_KEY_ENV", DEFAULT_OPENAI_API_KEY_ENV),
-        help="Environment variable that contains the OpenAI API key.",
+        "--ollama-url",
+        default=os.environ.get("KORAIL_OLLAMA_URL", DEFAULT_OLLAMA_URL),
+        help="Local Ollama server URL.",
     )
     analyze.add_argument("--route-hint")
     analyze.add_argument(
@@ -77,8 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["vlm", "auto", "paddle", "none"],
         default=os.environ.get("KORAIL_OCR_BACKEND", "vlm"),
         help=(
-            "Station OCR backend. 'vlm' uses the configured GPT vision API "
-            "and needs no OCR package."
+            "Station OCR backend. 'vlm' uses the selected local Ollama model "
+            "and needs no separate OCR package."
         ),
     )
     analyze.add_argument(
@@ -181,8 +176,7 @@ def _analyze_videos(args: argparse.Namespace) -> int:
             output_dir=args.out,
             interval_s=args.interval_sec,
             model=args.model,
-            openai_base_url=args.openai_base_url,
-            openai_api_key_env=args.openai_api_key_env,
+            ollama_url=args.ollama_url,
             route_hint=args.route_hint,
             ffmpeg_path=args.ffmpeg,
             ffprobe_path=args.ffprobe,

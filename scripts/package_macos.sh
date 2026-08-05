@@ -14,6 +14,7 @@ ARCH_NAME=${KORAIL_PACKAGE_ARCH:-$(uname -m)}
 PYTHON_BIN=${PYTHON_BIN:-python3}
 CODESIGN_IDENTITY=${KORAIL_CODESIGN_IDENTITY:-}
 INSTALLER_SIGN_IDENTITY=${KORAIL_INSTALLER_SIGN_IDENTITY:-}
+OLLAMA_MACOS_URL=${OLLAMA_MACOS_URL:-https://github.com/ollama/ollama/releases/latest/download/Ollama-darwin.zip}
 FFMPEG_MACOS_URL=${FFMPEG_MACOS_URL:-https://evermeet.cx/ffmpeg/getrelease/zip}
 FFPROBE_MACOS_URL=${FFPROBE_MACOS_URL:-https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip}
 
@@ -98,10 +99,44 @@ if [ ! -x "$PYINSTALLER" ]; then
 fi
 
 MACOS_VENDOR_ROOT="$PROJECT_ROOT/packaging/vendor/macos"
+OLLAMA_VENDOR="$MACOS_VENDOR_ROOT/ollama"
 FFMPEG_VENDOR="$MACOS_VENDOR_ROOT/ffmpeg"
+
+test_ollama_runtime() {
+  [ -f "$1/ollama" ]
+}
 
 test_ffmpeg_runtime() {
   [ -f "$1/bin/ffmpeg" ] && [ -f "$1/bin/ffprobe" ]
+}
+
+install_ollama_runtime() {
+  if test_ollama_runtime "$OLLAMA_VENDOR"; then
+    return
+  fi
+
+  TMP_ROOT=$(mktemp -d)
+  trap 'rm -rf "$TMP_ROOT"' EXIT INT TERM
+  ZIP_PATH="$TMP_ROOT/Ollama-darwin.zip"
+  EXTRACT_PATH="$TMP_ROOT/extract"
+  echo "Downloading Ollama macOS runtime: $OLLAMA_MACOS_URL"
+  curl -fL "$OLLAMA_MACOS_URL" -o "$ZIP_PATH"
+  mkdir -p "$EXTRACT_PATH"
+  unzip -q "$ZIP_PATH" -d "$EXTRACT_PATH"
+  RESOURCES="$EXTRACT_PATH/Ollama.app/Contents/Resources"
+  if [ ! -d "$RESOURCES" ]; then
+    echo "Could not find Ollama.app/Contents/Resources in downloaded archive." >&2
+    exit 1
+  fi
+  rm -rf "$OLLAMA_VENDOR"
+  mkdir -p "$OLLAMA_VENDOR"
+  ditto "$RESOURCES" "$OLLAMA_VENDOR"
+  chmod 755 "$OLLAMA_VENDOR/ollama" 2>/dev/null || true
+  chmod 755 "$OLLAMA_VENDOR/lib/ollama/llama-server" 2>/dev/null || true
+  if ! test_ollama_runtime "$OLLAMA_VENDOR"; then
+    echo "Downloaded Ollama runtime is incomplete: $OLLAMA_VENDOR" >&2
+    exit 1
+  fi
 }
 
 download_ffmpeg_binary() {
@@ -146,6 +181,10 @@ copy_bundled_runtime() {
   APP_PATH=$1
   RUNTIME_ROOT="$APP_PATH/Contents/MacOS/runtime"
 
+  if ! test_ollama_runtime "$OLLAMA_VENDOR"; then
+    echo "Ollama runtime is missing. Rerun without --skip-runtime-downloads." >&2
+    exit 1
+  fi
   if ! test_ffmpeg_runtime "$FFMPEG_VENDOR"; then
     echo "FFmpeg runtime is missing. Rerun without --skip-runtime-downloads." >&2
     exit 1
@@ -153,7 +192,10 @@ copy_bundled_runtime() {
 
   rm -rf "$RUNTIME_ROOT"
   mkdir -p "$RUNTIME_ROOT"
+  ditto "$OLLAMA_VENDOR" "$RUNTIME_ROOT/ollama"
   ditto "$FFMPEG_VENDOR" "$RUNTIME_ROOT/ffmpeg"
+  chmod 755 "$RUNTIME_ROOT/ollama/ollama" 2>/dev/null || true
+  chmod 755 "$RUNTIME_ROOT/ollama/lib/ollama/llama-server" 2>/dev/null || true
   chmod 755 "$RUNTIME_ROOT/ffmpeg/bin/ffmpeg" "$RUNTIME_ROOT/ffmpeg/bin/ffprobe" 2>/dev/null || true
 }
 
@@ -184,6 +226,7 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 
 if [ "$SKIP_RUNTIME_DOWNLOADS" -eq 0 ]; then
+  install_ollama_runtime
   install_ffmpeg_runtime
 fi
 copy_bundled_runtime "$APP_PATH"

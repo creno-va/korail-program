@@ -13,21 +13,21 @@ class EnvTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             env_path = Path(tmp_dir) / ".env"
             env_path.write_text(
-                "OPENAI_API_KEY='from-file'\nKORAIL_TEST_ENV=value\n",
+                "KORAIL_EXISTING='from-file'\nKORAIL_TEST_ENV=value\n",
                 encoding="utf-8",
             )
-            previous_key = os.environ.get("OPENAI_API_KEY")
-            os.environ["OPENAI_API_KEY"] = "from-env"
+            previous_value = os.environ.get("KORAIL_EXISTING")
+            os.environ["KORAIL_EXISTING"] = "from-env"
             try:
                 load_env_file(env_path)
 
-                self.assertEqual(os.environ["OPENAI_API_KEY"], "from-env")
+                self.assertEqual(os.environ["KORAIL_EXISTING"], "from-env")
                 self.assertEqual(os.environ["KORAIL_TEST_ENV"], "value")
             finally:
-                if previous_key is None:
-                    os.environ.pop("OPENAI_API_KEY", None)
+                if previous_value is None:
+                    os.environ.pop("KORAIL_EXISTING", None)
                 else:
-                    os.environ["OPENAI_API_KEY"] = previous_key
+                    os.environ["KORAIL_EXISTING"] = previous_value
                 os.environ.pop("KORAIL_TEST_ENV", None)
 
 

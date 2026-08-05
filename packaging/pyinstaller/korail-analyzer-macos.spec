@@ -17,7 +17,6 @@ datas = [
     ),
 ]
 datas += collect_data_files("qtawesome")
-datas += collect_data_files("certifi")
 
 hiddenimports = collect_submodules("qtawesome") + collect_submodules("korail_program")
 

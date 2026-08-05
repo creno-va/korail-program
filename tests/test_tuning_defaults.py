@@ -25,18 +25,18 @@ class TuningDefaultsTests(unittest.TestCase):
         self.assertEqual(args.interval_sec, 15.0)
         self.assertEqual(RiskLevel.coerce(args.min_report_risk), RiskLevel.LOW)
 
-    def test_prompt_keeps_uncertain_nearby_vegetation_as_watchlist(self) -> None:
+    def test_prompt_keeps_visible_clearance_as_low_risk_watchlist(self) -> None:
         prompt = build_frame_judge_prompt()
 
-        self.assertIn("use 낮음 as a watchlist", JUDGE_SYSTEM_PROMPT)
-        self.assertIn("Use 낮음, not 없음", prompt)
+        self.assertIn("Green color by itself", JUDGE_SYSTEM_PROMPT)
+        self.assertIn("specific trackside plant merits monitoring", prompt)
 
     def test_prompt_prefers_medium_for_uncertain_forward_corridor_clearance(self) -> None:
         prompt = build_frame_judge_prompt()
 
-        self.assertIn("Prefer recall at the 중간/낮음 boundary", JUDGE_SYSTEM_PROMPT)
-        self.assertIn("distance, perspective, blur, or partial occlusion", prompt)
-        self.assertIn("keep 중간 and set needs_human_review=true", prompt)
+        self.assertIn("downgraded only because it is distant", JUDGE_SYSTEM_PROMPT)
+        self.assertIn("Prefer medium at the medium/low boundary", prompt)
+        self.assertIn("blur, distance, perspective or occlusion", prompt)
 
 
 if __name__ == "__main__":

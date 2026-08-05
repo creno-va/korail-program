@@ -1,7 +1,7 @@
 param(
     [string]$Repo = "creno-va/korail-program",
     [string]$Version = "latest",
-    [string]$Model = "gpt-5.6-terra",
+    [string]$Model = "qwen3-vl:4b",
     [string]$InstallRoot = "$env:LOCALAPPDATA\KorailProgram",
     [switch]$SkipSystemPackages
 )
@@ -89,6 +89,10 @@ if (-not (Get-CommandPath "ffmpeg")) {
     Install-WingetPackage -Id "Gyan.FFmpeg" -Name "FFmpeg"
 }
 
+if (-not (Get-CommandPath "ollama")) {
+    Install-WingetPackage -Id "Ollama.Ollama" -Name "Ollama"
+}
+
 $PythonExecutable = $PythonCommand[0]
 $PythonArgs = @()
 if ($PythonCommand.Count -gt 1) {
@@ -99,10 +103,6 @@ $VenvPath = Join-Path $InstallRoot ".venv"
 & $PythonExecutable @PythonArgs -m venv $VenvPath
 & (Join-Path $VenvPath "Scripts\python.exe") -m pip install --upgrade pip
 & (Join-Path $VenvPath "Scripts\python.exe") -m pip install $SourceDir
-
-if (-not $env:OPENAI_API_KEY) {
-    Write-Warning "OPENAI_API_KEY is not set. Set it in the environment or save it in the app's API settings before analysis."
-}
 
 $RunGui = Join-Path $InstallRoot "Run Korail Analyzer.cmd"
 $RunAnalysis = Join-Path $InstallRoot "Analyze Videos.cmd"

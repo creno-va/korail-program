@@ -8,7 +8,7 @@ Windows·macOS용 데스크톱 앱과 AI 영상 분석 파이프라인, PDF 보�
 
 ## 핵심 기능
 
-영상 파일·폴더 드래그앤드롭, 등록 영상 선택과 재생, 분석 시작·정지, 진행률 표시, GPT Vision 위험도 판정, VLM 역명 OCR, 운행 구간 매핑, 탐지 프레임 검수, 통계 확인, 구간별 고유 프레임을 정리한 현장 양식형 PDF 저장과 인앱 미리보기 기능을 구현했습니다.
+영상 파일·폴더 드래그앤드롭, 등록 영상 선택과 재생, 분석 시작·정지, 진행률 표시, 로컬 Ollama Vision 위험도 판정, VLM 역명 OCR, 운행 구간 매핑, 탐지 프레임 검수, 통계 확인, 구간별 고유 프레임을 정리한 현장 양식형 PDF 저장과 인앱 미리보기 기능을 구현했습니다.
 
 ## 유저 플로우
 
@@ -16,7 +16,7 @@ Windows·macOS용 데스크톱 앱과 AI 영상 분석 파이프라인, PDF 보�
 
 ## 아키텍처
 
-PySide6 기반 GUI와 FFmpeg 프레임 샘플링, GPT Vision 판정, VLM OCR, 구간 매핑, 이벤트 병합, PDF 생성 모듈을 분리했습니다. 분석 결과와 UI 상태는 영상 단위로 연결하며, 연속 탐지 프레임은 시간 간격을 기준으로 하나의 이벤트로 통합합니다. 보고서에는 Pretendard GOV 글꼴과 Unicode 정규화를 적용하고, PyInstaller와 GitHub Actions로 Windows·macOS 설치본을 생성합니다.
+PySide6 기반 GUI와 FFmpeg 프레임 샘플링, Ollama Vision 판정, 모델별 프롬프트 하네스, VLM OCR, 구간 매핑, 이벤트 병합, PDF 생성 모듈을 분리했습니다. 분석 결과와 UI 상태는 영상 단위로 연결하며, 연속 탐지 프레임은 시간 간격을 기준으로 하나의 이벤트로 통합합니다. 보고서에는 Pretendard GOV 글꼴과 Unicode 정규화를 적용하고, PyInstaller와 GitHub Actions로 Windows·macOS 설치본을 생성합니다.
 
 ## 앱 화면
 
