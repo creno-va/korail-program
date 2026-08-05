@@ -1,6 +1,6 @@
 [project]
 name = "korail-program"
-version = "1.0.0"
+version = "1.0.1"
 description = "Offline desktop analyzer for catenary obstruction tree events in rail cab videos."
 readme = "README.md"
 requires-python = ">=3.11"

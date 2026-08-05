@@ -3,6 +3,8 @@ param(
     [switch]$SkipInnoInstall,
     [switch]$SkipPyInstallerInstall,
     [switch]$SkipRuntimeDownloads,
+    [switch]$SkipInstallerSmokeTest,
+    [switch]$SkipAppBuild,
     [string]$InnoSetupVersion = "6.7.1",
     [switch]$BuildAppOnly
 )
@@ -17,6 +19,8 @@ function Resolve-InWorkspace {
     $Root = (Resolve-Path -LiteralPath $ProjectRoot).Path
     $Resolved = if (Test-Path -LiteralPath $Path) {
         (Resolve-Path -LiteralPath $Path).Path
+    } elseif ([System.IO.Path]::IsPathRooted($Path)) {
+        [System.IO.Path]::GetFullPath($Path)
     } else {
         [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot $Path))
     }
@@ -54,6 +58,17 @@ function Find-Iscc {
         if (Test-Path -LiteralPath $Candidate) {
             return $Candidate
         }
+    }
+    $PortableRoot = Resolve-InWorkspace ".tools"
+    $Portable = Get-ChildItem `
+        -LiteralPath $PortableRoot `
+        -Recurse `
+        -Filter "ISCC.exe" `
+        -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($Portable) {
+        return $Portable.FullName
     }
     return $null
 }
@@ -230,43 +245,138 @@ function Copy-BundledRuntime {
     Copy-Item -LiteralPath $FfmpegSource -Destination $FfmpegTarget -Recurse
 }
 
+function Invoke-CheckedProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$Description
+    )
+
+    $Process = Start-Process `
+        -FilePath $FilePath `
+        -ArgumentList $ArgumentList `
+        -Wait `
+        -PassThru `
+        -WindowStyle Hidden
+    if ($Process.ExitCode -ne 0) {
+        throw "$Description failed with exit code $($Process.ExitCode)."
+    }
+}
+
+function Test-WindowsInstaller {
+    param(
+        [string]$Installer,
+        [string]$PackageVersion
+    )
+
+    $SmokeRoot = Resolve-InWorkspace "build\installer-smoke-$PackageVersion"
+    Remove-InWorkspace $SmokeRoot
+    New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
+
+    $InstallRoot = Join-Path $SmokeRoot "app"
+    $InstallLog = Join-Path $SmokeRoot "install.log"
+    $InstallArguments = @(
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        "/DIR=`"$InstallRoot`"",
+        "/LOG=`"$InstallLog`""
+    )
+
+    Write-Host "Smoke-testing installer with a real per-user install..."
+    try {
+        Invoke-CheckedProcess `
+            -FilePath $Installer `
+            -ArgumentList $InstallArguments `
+            -Description "Installer smoke test"
+
+        foreach ($RelativePath in @(
+            "KorailAnalyzer.exe",
+            "runtime\ollama\ollama.exe",
+            "runtime\ollama\lib\ollama\llama-server.exe",
+            "runtime\ffmpeg\bin\ffmpeg.exe",
+            "runtime\ffmpeg\bin\ffprobe.exe"
+        )) {
+            $InstalledPath = Join-Path $InstallRoot $RelativePath
+            if (-not (Test-Path -LiteralPath $InstalledPath)) {
+                throw "Installer smoke test is missing: $InstalledPath"
+            }
+        }
+
+        $Uninstaller = Get-ChildItem -LiteralPath $InstallRoot -Filter "unins*.exe" |
+            Select-Object -First 1
+        if (-not $Uninstaller) {
+            throw "Installer smoke test did not create an uninstaller."
+        }
+        Invoke-CheckedProcess `
+            -FilePath $Uninstaller.FullName `
+            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") `
+            -Description "Uninstaller smoke test"
+    } catch {
+        if (Test-Path -LiteralPath $InstallLog) {
+            Write-Host "Last installer log entries:"
+            Get-Content -LiteralPath $InstallLog -Tail 40
+        }
+        throw
+    }
+
+    Write-Host "Installer install/uninstall smoke test passed."
+}
+
 if (-not $Version) {
     $Version = Get-ProjectVersion
 }
 
-if (-not (Test-Path -LiteralPath ".venv\Scripts\python.exe")) {
-    python -m venv .venv
-}
-
-$Python = Resolve-InWorkspace ".venv\Scripts\python.exe"
-if (-not $SkipPyInstallerInstall) {
-    & $Python -m pip install --upgrade pip
-    & $Python -m pip install -e .
-    & $Python -m pip install "pyinstaller>=6.11"
-}
-
-Remove-InWorkspace "build\korail-analyzer-gui"
-Remove-InWorkspace "dist\KorailAnalyzer"
-Remove-InWorkspace "dist\installer"
-
-$PyInstaller = Resolve-InWorkspace ".venv\Scripts\pyinstaller.exe"
-& $PyInstaller --noconfirm "packaging\pyinstaller\korail-analyzer-gui.spec"
-
 $AppExe = Resolve-InWorkspace "dist\KorailAnalyzer\KorailAnalyzer.exe"
-if (-not (Test-Path -LiteralPath $AppExe)) {
-    throw "PyInstaller did not create $AppExe"
-}
+if (-not $SkipAppBuild) {
+    if (-not (Test-Path -LiteralPath ".venv\Scripts\python.exe")) {
+        python -m venv .venv
+    }
 
-if (-not $SkipRuntimeDownloads) {
-    Install-OllamaRuntime | Out-Null
-    Install-FfmpegRuntime | Out-Null
+    $Python = Resolve-InWorkspace ".venv\Scripts\python.exe"
+    if (-not $SkipPyInstallerInstall) {
+        & $Python -m pip install --upgrade pip
+        & $Python -m pip install -e .
+        & $Python -m pip install "pyinstaller>=6.11"
+    }
+
+    Remove-InWorkspace "build\korail-analyzer-gui"
+    Remove-InWorkspace "dist\KorailAnalyzer"
+
+    $PyInstaller = Resolve-InWorkspace ".venv\Scripts\pyinstaller.exe"
+    & $PyInstaller --noconfirm "packaging\pyinstaller\korail-analyzer-gui.spec"
+
+    if (-not (Test-Path -LiteralPath $AppExe)) {
+        throw "PyInstaller did not create $AppExe"
+    }
+
+    if (-not $SkipRuntimeDownloads) {
+        Install-OllamaRuntime | Out-Null
+        Install-FfmpegRuntime | Out-Null
+    }
+    Copy-BundledRuntime
+} elseif (-not (Test-Path -LiteralPath $AppExe)) {
+    throw "Existing app bundle was not found: $AppExe"
 }
-Copy-BundledRuntime
 
 if ($BuildAppOnly) {
     Write-Host "App bundle created: $AppExe"
     exit 0
 }
+
+if (-not (Test-OllamaRuntime (Resolve-InWorkspace "dist\KorailAnalyzer\runtime\ollama"))) {
+    throw "Existing app bundle has an incomplete Ollama runtime."
+}
+foreach ($RelativePath in @(
+    "dist\KorailAnalyzer\runtime\ffmpeg\bin\ffmpeg.exe",
+    "dist\KorailAnalyzer\runtime\ffmpeg\bin\ffprobe.exe"
+)) {
+    if (-not (Test-Path -LiteralPath (Resolve-InWorkspace $RelativePath))) {
+        throw "Existing app bundle is missing: $RelativePath"
+    }
+}
+
+Remove-InWorkspace "dist\installer"
 
 $Iscc = Find-Iscc
 if (-not $Iscc -and -not $SkipInnoInstall) {
@@ -283,6 +393,10 @@ $env:KORAIL_APP_VERSION = $Version
 $Installer = Resolve-InWorkspace "dist\installer\KorailAnalyzerSetup-$Version.exe"
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "Installer was not created: $Installer"
+}
+
+if (-not $SkipInstallerSmokeTest) {
+    Test-WindowsInstaller -Installer $Installer -PackageVersion $Version
 }
 
 Write-Host "Installer created: $Installer"
